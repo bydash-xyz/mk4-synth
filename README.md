@@ -21,14 +21,16 @@ Each preset has 16 parameters: Bank A is knobs 1-8, Bank B is knobs 9-16.
 
 ## Hardware at a glance
 
-| Part | Model |
-| :--- | :--- |
-| MCU | ESP32-S3-DevKitC-1 N16R8 (16 MB flash, 8 MB octal PSRAM) |
-| DAC | PCM5102A (GY-PCM5102 breakout) on I2S, GPIO 4/5/6 |
-| Display | 0.96" SSD1306 OLED, I2C, GPIO 8 (SDA) / 9 (SCL) |
-| Controller | Akai MPK Mini MK4 on the native USB host port (GPIO 19/20) |
+| Part | Model | Buy |
+| :--- | :--- | :--- |
+| MCU | ESP32-S3 N16R8 dual USB-C board (16 MB flash, 8 MB octal PSRAM) | [Amazon](https://amzn.to/47Ypoyo) |
+| DAC | PCM5102A (GY-PCM5102 breakout) on I2S, GPIO 4/5/6 | [Amazon](https://link.amazon/B07QhN2h2) |
+| Display | 0.96" SSD1306 OLED, I2C, GPIO 8 (SDA) / 9 (SCL) | [Amazon](https://link.amazon/B0cLaqKIj) |
+| Controller | Akai MPK Mini MK4 on the native USB host port (GPIO 19/20) | [Amazon](https://link.amazon/B08fwMN1S) |
 
-The build guide, with the exact parts, a wiring diagram, bring-up steps and troubleshooting, is [HARDWARE.md](HARDWARE.md). Bring-up sketches for each part are in [diagnostics/](diagnostics/README.md).
+The Amazon links are affiliate links: buying through them supports the project at no extra cost to you.
+
+The build guide, with the exact parts, tools, a wiring diagram, bring-up steps and troubleshooting, is [HARDWARE.md](HARDWARE.md). Bring-up sketches for each part are in [diagnostics/](diagnostics/README.md).
 
 ## Quick start
 
