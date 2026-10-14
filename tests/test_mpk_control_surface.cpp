@@ -561,15 +561,19 @@ void test_physical_tap_tempo_cc82() {
     engine.setMetronomeBpm(60.0f);
     const bool metroInitially = engine.isMetronomeEnabled();
 
-    // 1. Three press/release taps ~500ms apart -> BPM ~120, metronome state untouched.
+    // 1. Three press/release taps 500 ms apart -> 120 BPM, metronome state untouched.
     //    Release (value 0) must be ignored, and CC 82 must not leak through as a synth parameter.
-    for (int i = 0; i < 3; ++i) {
-        if (i > 0) std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        assert(surface.processMidiMessage(0xB0, Synth::CC_HW_TAP_TEMPO, 127) == SurfaceStatus::Success);
-        assert(surface.processMidiMessage(0xB0, Synth::CC_HW_TAP_TEMPO, 0) == SurfaceStatus::Success);
+    //    The mock clock is stepped instead of sleeping: a busy CI runner can oversleep by 100+ ms.
+    {
+        ScopedFrozenMillis frozenClock;
+        for (int i = 0; i < 3; ++i) {
+            setMockMillis(10000 + 500 * i);
+            assert(surface.processMidiMessage(0xB0, Synth::CC_HW_TAP_TEMPO, 127) == SurfaceStatus::Success);
+            assert(surface.processMidiMessage(0xB0, Synth::CC_HW_TAP_TEMPO, 0) == SurfaceStatus::Success);
+        }
     }
     const float bpm = engine.getMetronomeBpm();
-    assert(bpm > 100.0f && bpm < 125.0f);
+    assert(bpm > 119.0f && bpm < 121.0f);
     assert(engine.isMetronomeEnabled() == metroInitially);
     assert(!hudLabels.empty() && hudLabels.back().rfind("BPM:", 0) == 0);
 
