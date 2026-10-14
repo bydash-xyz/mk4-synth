@@ -4,6 +4,8 @@ A standalone polyphonic ESP32-S3 synthesizer for the Akai MPK Mini MK4.
 
 It runs on an ESP32-S3 and on the desktop. The same C++ `SynthEngine` provides the factory sounds (Juno-60, Minimoog, Prophet-5, TB-303, CS-80, OB-Xa, Casio PT-10, 2-operator FM keyboards, PPG-style wavetable, Casio CZ phase distortion, Karplus-Strong plucked strings and a Hammond drawbar organ) and user patch slots. On hardware it is played from an Akai MPK Mini MK4 plugged into the ESP32-S3's USB host port, shows its state on a small OLED, and outputs audio through a PCM5102A I2S DAC. Wireless patch editing uses BLE SysEx. On the desktop, `synth_sim` plays the same engine through PortAudio, and `synth_render` renders presets offline to WAV.
 
+Install the firmware from the browser at [bydash.xyz/mk4-synth](https://bydash.xyz/mk4-synth/), and play the OLED screen animations there before you build anything: [bydash.xyz/mk4-synth/animations](https://bydash.xyz/mk4-synth/animations/).
+
 Preset layout (32 slots, see [CONTEXT.md](CONTEXT.md) for the full list and domain terms):
 
 | Slots | Contents |
@@ -220,7 +222,7 @@ Other files in `tools/`: `patch_ble_midi.py` (PlatformIO pre-build script), `man
 | `tests/` | Unit tests, with `mock_hal/` replacing Arduino/ESP32 peripherals on the host |
 | `tools/` | Python and C++ helper tools (see above) |
 | `diagnostics/` | Standalone bring-up sketches for each hardware part |
-| `docs/` | `adr/` (architecture decision records), DSP fidelity review, MK4 MIDI reference and generated manual, wiring diagram, OLED animation prototype (`oled_midi_toys.html`) |
+| `docs/` | `adr/` (architecture decision records), DSP fidelity review, MK4 MIDI reference and generated manual, wiring diagram |
 | `platformio.ini` | Firmware environments: `mk4-synth`, `mk4-synth-profile`, `diag_dac_test` |
 | `CMakeLists.txt` | Desktop build, tests and tools |
 | `.github/` | CI workflow (see below), issue and pull request templates |

@@ -1,5 +1,5 @@
-// Unit tests for the MIDI toy OLED animations (src/animations/*Animation.h, prototyped in
-// docs/oled_midi_toys.html). Each animation's tests live in tests/toy_anims/<name>_test.inc.
+// Unit tests for the MIDI toy OLED animations (src/animations/*Animation.h, prototyped at
+// https://bydash.xyz/mk4-synth/animations/). Each animation's tests live in tests/toy_anims/<name>_test.inc.
 #include <cassert>
 #include <cmath>
 #include <cstring>

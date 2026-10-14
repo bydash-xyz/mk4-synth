@@ -40,7 +40,7 @@ static HardwareDriver::KeyboardAnimation     g_animKeyboard;
 static HardwareDriver::SynthwaveAnimation    g_animSynthwave;
 static HardwareDriver::LissajousAnimation    g_animLissajous;
 static HardwareDriver::RoadRacerAnimation    g_animRacer;
-// MIDI toys (prototyped in docs/oled_midi_toys.html)
+// MIDI toys (playable prototypes at https://bydash.xyz/mk4-synth/animations/)
 static HardwareDriver::ChoirAnimation        g_animChoir;
 static HardwareDriver::PondAnimation         g_animPond;
 static HardwareDriver::PlinkoAnimation       g_animPlinko;

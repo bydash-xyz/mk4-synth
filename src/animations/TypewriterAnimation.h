@@ -11,8 +11,8 @@
 
 namespace HardwareDriver {
 
-// The top of a typewriter typing your melody's contour (prototype: TypewriterAnimation in
-// docs/oled_midi_toys.html). No text at all, just the machine:
+// The top of a typewriter typing your melody's contour (prototype: TypewriterAnimation at
+// https://bydash.xyz/mk4-synth/animations/). No text at all, just the machine:
 // - A tall sheet of paper (y16..44, three lines visible) over a platen roller with knobs at both
 //   ends and a carriage-return lever off the left knob; it all slides left as you type.
 // - Under the platen, a row of 13 little typebar hammers standing on pivots along the bottom

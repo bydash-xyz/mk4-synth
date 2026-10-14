@@ -152,7 +152,7 @@ target_compile_definitions(hardware_driver_test PRIVATE
 )
 
 # -------------------------------------------------------------
-# Unit Test: MIDI toy OLED animations (docs/oled_midi_toys.html)
+# Unit Test: MIDI toy OLED animations (prototypes: https://bydash.xyz/mk4-synth/animations/)
 # -------------------------------------------------------------
 add_executable(toy_animation_test
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_toy_animations.cpp

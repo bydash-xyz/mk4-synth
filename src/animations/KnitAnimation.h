@@ -12,7 +12,7 @@
 namespace HardwareDriver {
 
 // A knitting machine that knits what you play into a scrolling sweater pattern (prototype:
-// KnitAnimation in docs/oled_midi_toys.html).
+// KnitAnimation at https://bydash.xyz/mk4-synth/animations/).
 // - A carriage sweeps the needle bed back and forth, two rows per beat: locked to the metronome
 //   when it is on, free-running at the set BPM when it is off.
 // - Each of the 32 columns is a stretch of the keybed. Held notes knit V stitches in their column
