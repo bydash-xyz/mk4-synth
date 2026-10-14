@@ -129,7 +129,7 @@ void SynthEngine::updateMpkMiniDisplay(const char* line1Override, const char* li
                                 theme.bodyBg, MpkMiniMk4::Layout::ThreeLineNormal);
         mpkDisplay_.writeScreen3Lines(s0, s1, s2, true);
 
-        // 3. Pre-seed hardware rotary encoder accumulators (knobState[0..7].currentValue @ 0x2000fee0) via SysEx 0x12
+        // 3. Pre-seed hardware rotary encoder accumulators via SysEx 0x12
         std::array<uint8_t, 8> knobVals;
         for (size_t k = 0; k < 8; ++k) {
             knobVals[k] = bank.defaults[k];

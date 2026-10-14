@@ -94,7 +94,7 @@ Manufacturer-specific MIDI System Exclusive (`F0 7D ... F7`) byte protocol facil
 
 ### MpkMiniMk4ControlSurface (`lib/MpkMiniMk4Display/include/MpkMiniMk4ControlSurface.h`)
 The bidirectional hardware interaction module governing the Akai MPK Mini MK4 control surface:
-- **Knob Value Pre-Seeding (`SysEx 0x12`)**: Writes 10-byte `F0 47 00 5D 12 00 02 <k> <val> F7` messages over `Plugin Port` to seed the keyboard's internal SRAM accumulators (`knobState[0..7].currentValue` at `0x2000fee0`) on preset load, Bank A/B switches, and external parameter changes, eliminating value drops to 0.
+- **Knob Value Pre-Seeding (`SysEx 0x12`)**: Writes 10-byte `F0 47 00 5D 12 00 02 <k> <val> F7` messages over `Plugin Port` to seed the keyboard's internal knob accumulators on preset load, Bank A/B switches, and external parameter changes, eliminating value drops to 0.
 - **Echo Suppression**: Suppresses echoing `SysEx 0x12` back to the hardware encoder when parameter changes originate from physical knob turns (`ChangeSource::PhysicalKnob`).
 - **Dual-Bank Cache**: Maintains live session values for Bank A (`K1..K8`) and Bank B (`K9..K16`) across `BANK A/B` toggles (`SHIFT` + knob is the MK4 firmware's fine adjust, delta/4, and never changes bank).
 - **Surface Gestures**: Intercepts `SHIFT + Keybed Note` for root key selection, `SHIFT + Nav Dial` for ±4 preset stepping, `SHIFT + BANK` for the Rhythm page (metro level, tempo, time sig, beats/bar, click WOOD/C..B, STEREO/MONO output saved in NVS, SOUND/SILENT metronome, master volume), and `-`/`+` navigation. Scale quantizing is left to the MK4's own Scale mode.

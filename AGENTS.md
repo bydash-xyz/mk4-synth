@@ -20,7 +20,7 @@ that.
   request to start with at least one sentence written by a person. When you draft one, leave the
   "Summary (written by you)" field for the user and ask them for it. Never write it yourself, and
   don't paraphrase their words into it.
-- **`.scratch/` is local-only.** It holds the maintainer's private notes (reverse-engineering,
+- **`.scratch/` is local-only.** It holds the maintainer's private notes (research,
   old reviews, specs) and is git-ignored. You may read it for background. Never commit it, and
   never link to it from tracked files.
 

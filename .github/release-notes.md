@@ -14,4 +14,5 @@ Updating keeps your saved user patches unless you choose to erase the device. Wi
 | `mk4-synth.bin` | Complete image (bootloader, partition table, app); flash at `0x0` |
 | `manifest.json` | ESP Web Tools manifest used by the web flasher |
 | `SHA256SUMS` | Checksum of `mk4-synth.bin` |
-| `THIRD_PARTY_NOTICES.md` | Licenses of the libraries included in the firmware |
+| `THIRD_PARTY_NOTICES.md` | Which libraries the firmware includes, and how to rebuild it with modified ones |
+| `THIRD_PARTY_LICENSES.md` | Full license texts of those libraries |

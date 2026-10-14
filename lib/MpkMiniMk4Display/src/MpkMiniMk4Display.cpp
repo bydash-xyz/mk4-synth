@@ -234,7 +234,7 @@ bool DisplayDriver::autoConnectRtMidi() {
             };
         }
 
-        // Prefer Plugin Port exclusively (Firmware 0x0800e13e uses a single global [0x800ec1c] byte for activeScreenOwner)
+        // Prefer Plugin Port exclusively (the MK4 keeps a single active screen owner for all ports)
         int targetPortIdx = (pluginIdx >= 0) ? pluginIdx : dawIdx;
         if (targetPortIdx < 0) {
             return false;
@@ -381,7 +381,7 @@ std::vector<uint8_t> DisplayDriver::makeSetTempoSysEx(uint16_t bpm, uint8_t devI
 }
 
 std::vector<uint8_t> DisplayDriver::makeBankSelectSysEx(bool isBankB, uint8_t devId) {
-    // MPK Mini MK4 Firmware 0x0800d10c / 0x0801a40c (accepted ONLY on USB-MIDI virtual cable 2,
+    // The MK4 accepts this ONLY on USB-MIDI virtual cable 2 (
     // silently dropped on cable 1 -- transports must route this packet to cable 2):
     // SysEx 0x3A sets hardware Bank state & BANK A/B button LED:
     // 0x01 = Bank A (White LED)

@@ -4,8 +4,7 @@
  * MpkMiniMk4Display.h
  * Standalone Generic-Purpose OLED Screen & Hardware Controller Library for Akai MPK Mini MK4 (IV)
  *
- * Implements the reverse-engineered Studio Instrument Collection (Ad4x::HardwareIO) &
- * MPK Mini IV ARM Cortex-M Firmware (AD41_ICYH113M17_Y1-41_1717.bin) SysEx protocol:
+ * Implements the MPK Mini IV's screen and control SysEx, as observed on the device for interoperability:
  *   - 0x3A: Select Active Hardware Mode (0x00=DAW, 0x01=Plugin, 0x02..0x09=User 1..8)
  *   - 0x1C: Take/Release Screen Ownership (ownerType=0x01 "SVK0" on Plugin Port, 0x02 "DAW" on DAW Port)
  *   - 0x19: Bidirectional Screen Ownership Heartbeat
@@ -35,14 +34,14 @@
 
 namespace MpkMiniMk4 {
 
-// Horizontal text alignment on the 160x80 pixel OLED (Firmware 0x08014d2a)
+// Horizontal text alignment on the 160x80 pixel OLED
 enum class Align : uint8_t {
     Left   = 0x00, // x = 0
     Center = 0x01, // x = (160 - textWidth) / 2
     Right  = 0x02  // x = 160 - textWidth
 };
 
-// Vertical layout & font mode (Firmware 0x08014d46)
+// Vertical layout & font mode
 enum class Layout : uint8_t {
     FiveLineNormal   = 0x00, // 5 lines x 16px height (normal)
     FiveLineInverted = 0x01, // 5 lines x 16px height (highlighted cursor)
@@ -50,7 +49,7 @@ enum class Layout : uint8_t {
     ThreeLineHeader  = 0x03  // 3 lines x 24px height (header banner / bold)
 };
 
-// Active hardware mode selected via command 0x3A on Plugin Port (Firmware 0x0800d10c)
+// Active hardware mode selected via command 0x3A on Plugin Port
 enum class HardwareMode : uint8_t {
     Daw    = 0x00,
     Plugin = 0x01, // Required for Plugin Port (SVK0) OLED buffer to be displayed
@@ -64,7 +63,7 @@ enum class HardwareMode : uint8_t {
     User8  = 0x09
 };
 
-// Port-specific screen owner type for command 0x1C (Firmware 0x0800e10e)
+// Port-specific screen owner type for command 0x1C
 enum class OwnerType : uint8_t {
     Release         = 0x00,
     PluginSVK0      = 0x01, // Required when sending 0x1C on "MPK mini IV Plugin Port" (USB Cable 2)
@@ -73,7 +72,7 @@ enum class OwnerType : uint8_t {
 };
 
 // 8-bit RGB color. The panel is RGB565: 0x14 / 0x71 packets carry R and B as 0..31 and G as 0..63
-// (Firmware 0x0800ddc6 packs them with no masking), so conversion happens only in r5()/g6()/b5().
+// (the device packs them with no masking), so conversion happens only in r5()/g6()/b5().
 struct Color {
     uint8_t r{255};
     uint8_t g{255};
@@ -352,13 +351,13 @@ public:
                                                   Layout layout = Layout::ThreeLineNormal,
                                                   uint8_t devId = 0x00);
 
-    // Raw pixel blit into the 160x80 framebuffer (Firmware 0x0800ee5e, hardware-verified; accepted on any cable):
+    // Raw pixel blit into the 160x80 framebuffer (hardware-verified; accepted on any cable):
     // F0 47 <dev> 5D 71 <lenHi> <lenLo> <xHi xLo> <yHi yLo> <wHi wLo> <hHi hLo> (<R5> <G6> <B5>) x w*h F7
     // Coordinates are 14-bit (hi = upper 7 bits); pixel i lands at (x + i % w, y + i / w). Pixels are RGB565.
     static std::vector<uint8_t> makeBlitSysEx(int x, int y, int w, int h, const uint16_t* pixels,
                                               uint8_t devId = 0x00);
 
-    // Builds a 10-byte SysEx 0x12 packet to set hardware rotary encoder accumulator in MPK SRAM (0x2000fee0):
+    // Builds a 10-byte SysEx 0x12 packet to set hardware rotary encoder accumulator:
     // F0 47 <devId> 5D 12 00 02 <knobIdx: 0..7> <knobValue: 0..127> F7
     static std::vector<uint8_t> makeKnobValueSysEx(uint8_t knobIndex, uint8_t value7Bit, uint8_t devId = 0x00);
 

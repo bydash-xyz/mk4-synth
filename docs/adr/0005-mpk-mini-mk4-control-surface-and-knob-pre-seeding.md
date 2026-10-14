@@ -1,15 +1,15 @@
 # Abstract MPK Mini MK4 Control Surface with SysEx 0x12 Hardware Knob Pre-Seeding
 
 ## Context
-Reverse engineering of the Akai MPK Mini IV firmware (`AD41_ICYH113M17_Y1-41_1717.bin`) and Studio Instrument Collection (`Ad4x` driver) revealed that the 8 endless rotary encoders (`K1..K8`) run in `Mode 0 (Absolute)` backed by internal SRAM accumulators (`knobState[0..7].currentValue` at `0x2000fee0`). At boot or patch change, unseeded accumulators hold `0` (or stale values). When turned, the firmware increments or decrements from `0`, causing synth parameters to drop immediately to 0.
+Interoperability testing of the Akai MPK Mini IV showed that the 8 endless rotary encoders (`K1..K8`) run in `Mode 0 (Absolute)` backed by internal per-knob accumulators. At boot or patch change, unseeded accumulators hold `0` (or stale values). When turned, the firmware increments or decrements from `0`, causing synth parameters to drop immediately to 0.
 
-Standard MIDI CC messages (`0xB0`) are never written to `0x2000fee0` by the firmware, and 284-byte RAM preset writes (`0x64`) contain no initial value field. Instead, Studio Instrument Collection uses undocumented SysEx Command `0x12` (`F0 47 00 5D 12 00 02 <k> <val> F7`) to directly pre-seed `knobState[k].currentValue` in SRAM.
+Standard MIDI CC messages (`0xB0`) sent to the device don't update those accumulators, and 284-byte RAM preset writes (`0x64`) contain no initial value field. SysEx Command `0x12` (`F0 47 00 5D 12 00 02 <k> <val> F7`) sets a knob's accumulator directly.
 
 Previously in `mk4-synth`, MPK Mini MK4 input handling was tightly coupled inside `HardwareDriver::UsbHostMidi`, while display operations were split between `MpkSysExDisplay` and `SynthEngine::MpkMiniMk4::DisplayDriver`.
 
 ## Decision
 We create a dedicated, platform-agnostic deep module **`MpkMiniMk4::ControlSurface`** in `lib/MpkMiniMk4Display`:
-1. **Knob Value Pre-Seeding (`SysEx 0x12`)**: On preset load, Bank A/B switch, and external parameter changes (e.g. Web Companion SysEx), the control surface transmits 10-byte `0x12` packets over `Plugin Port` to seed `knobState[k].currentValue` (`0x2000fee0`) in the MPK Mini IV's SRAM.
+1. **Knob Value Pre-Seeding (`SysEx 0x12`)**: On preset load, Bank A/B switch, and external parameter changes (e.g. Web Companion SysEx), the control surface transmits 10-byte `0x12` packets over `Plugin Port` to seed each knob's accumulator in the MPK Mini IV.
 2. **Echo Suppression (`ChangeSource != PhysicalKnob`)**: When a parameter change originates from turning physical knob `K1..K8`, echoing `SysEx 0x12` back to the hardware encoder is suppressed to prevent bus saturation and race conditions with ongoing quadrature encoder clicks.
 3. **Dual-Bank Live Session Cache**: Live 7-bit values for Bank A (`K1..K8`) and Bank B (`K9..K16`) are maintained per preset session, ensuring tweaks made in Bank A are not lost when editing Bank B and vice versa.
 4. **Mandatory Plugin Port Connection**: An active `Plugin Port` SysEx connection is strictly required for parameter control. If `Plugin Port` is not connected, the control surface halts parameter updates and alerts the user to connect `MPK mini IV Plugin Port`.

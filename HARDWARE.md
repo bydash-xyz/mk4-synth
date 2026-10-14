@@ -36,7 +36,7 @@ report what you used.
 | Also | Flush cutters, wire strippers, and a computer with [PlatformIO](https://platformio.org/) | |
 
 The Amazon links above are affiliate links: buying through them supports the project at no
-extra cost to you. Any seller's equivalent part or tool works just as well.
+extra cost to you. As an Amazon Associate I earn from qualifying purchases. Any seller's equivalent part or tool works just as well.
 
 ## 2. Prepare the ESP32-S3 board
 

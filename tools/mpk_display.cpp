@@ -204,9 +204,9 @@ bool sendLiveDisplay(const std::string& line0, const std::string& line1, const s
                      uint8_t align0 = 1, uint8_t align1 = 0, uint8_t align2 = 2,
                      int bg1R = -1, int bg1G = -1, int bg1B = -1,
                      int bg2R = -1, int bg2G = -1, int bg2B = -1) {
-    // IMPORTANT (Firmware 0x0800e13e): [0x800ec1c] (activeScreenOwner) is a SINGLE global byte!
-    // Sending 0x1C (0x02) on DAW Port after 0x1C (0x01) on Plugin Port overwrites [0x800ec1c] = 2
-    // while [0x800ec20] (activeMode) = 1 (Plugin), causing a mode/owner mismatch!
+    // IMPORTANT: the MK4 keeps a SINGLE active screen owner for all ports. Sending 0x1C (0x02) on
+    // DAW Port after 0x1C (0x01) on Plugin Port makes DAW the owner while the active mode is still
+    // Plugin, causing a mode/owner mismatch!
     // Therefore, exclusively use Plugin Port (mode=0x01, ownerType=0x01) when present.
     struct PortTarget {
         const char* pattern;
@@ -265,7 +265,7 @@ bool sendLiveDisplay(const std::string& line0, const std::string& line1, const s
         auto t2 = makeDisplayTextSysEx(line2, 2, devId, 0x02);
         midiOut.sendMessage(&t2);
 
-        // Stop after Plugin Port so DAW Port does not clobber [0x800ec1c] (activeScreenOwner)!
+        // Stop after Plugin Port so DAW Port does not take over the single active screen owner!
         break;
     }
 

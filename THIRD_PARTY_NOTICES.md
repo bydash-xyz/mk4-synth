@@ -2,7 +2,8 @@
 
 mk4-synth's own code is MIT licensed (see [LICENSE](LICENSE)). The prebuilt firmware
 (`mk4-synth.bin` on the [Releases](https://github.com/bydash-xyz/mk4-synth/releases) page) also
-contains the following software, under its own license:
+contains the following software, under its own license. The full license texts are in
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md), which is also attached to every release.
 
 | Component | License | Source |
 | :--- | :--- | :--- |
@@ -12,8 +13,8 @@ contains the following software, under its own license:
 | BLE-MIDI | MIT | https://github.com/lathoub/Arduino-BLE-MIDI |
 | Arduino MIDI Library | MIT | https://github.com/FortySevenEffects/arduino_midi_library |
 
-The OLED glyph table in `lib/MpkMiniMk4Display/include/MpkOledFont.h` is rendered from the Arimo
-font (Copyright Google, Apache-2.0).
+The OLED glyph table in `lib/MpkMiniMk4Display/include/MpkOledFont.h` is pre-rendered from the
+Arimo font (Copyright Google; Apache-2.0, later versions SIL OFL 1.1). No font file is included.
 
 ## Rebuilding with a modified library (LGPL-2.1)
 

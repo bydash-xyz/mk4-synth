@@ -2,21 +2,21 @@
 
 A standalone polyphonic ESP32-S3 synthesizer for the Akai MPK Mini MK4.
 
-It runs on an ESP32-S3 and on the desktop. The same C++ `SynthEngine` provides the factory sounds (Juno-60, Minimoog, Prophet-5, TB-303, CS-80, OB-Xa, Casio PT-10, 2-operator FM keyboards, PPG-style wavetable, Casio CZ phase distortion, Karplus-Strong plucked strings and a Hammond drawbar organ) and user patch slots. On hardware it is played from an Akai MPK Mini MK4 plugged into the ESP32-S3's USB host port, shows its state on a small OLED, and outputs audio through a PCM5102A I2S DAC. Wireless patch editing uses BLE SysEx. On the desktop, `synth_sim` plays the same engine through PortAudio, and `synth_render` renders presets offline to WAV.
+It runs on an ESP32-S3 and on the desktop. The same C++ `SynthEngine` provides the factory sounds, modelled on classic instruments (in the style of the Juno-60, Minimoog, Prophet-5, TB-303, CS-80, OB-Xa and Casio PT-10, plus 2-operator FM keyboards, PPG-style wavetable, CZ-style phase distortion, Karplus-Strong plucked strings and a drawbar organ) and user patch slots. On hardware it is played from an Akai MPK Mini MK4 plugged into the ESP32-S3's USB host port, shows its state on a small OLED, and outputs audio through a PCM5102A I2S DAC. Wireless patch editing uses BLE SysEx. On the desktop, `synth_sim` plays the same engine through PortAudio, and `synth_render` renders presets offline to WAV.
 
 Install the firmware from the browser at [bydash.xyz/mk4-synth](https://bydash.xyz/mk4-synth/), and play the OLED screen animations there before you build anything: [bydash.xyz/mk4-synth/animations](https://bydash.xyz/mk4-synth/animations/).
 
-Preset layout (32 slots, see [CONTEXT.md](CONTEXT.md) for the full list and domain terms):
+Preset layout (32 slots, see [CONTEXT.md](CONTEXT.md) for the full list and domain terms). Instrument names describe the sound each preset aims for; mk4-synth isn't affiliated with their makers (see [Disclaimer](#disclaimer)):
 
 | Slots | Contents |
 | :--- | :--- |
-| 1-6 | Subtractive analog: Juno-60, Minimoog, Prophet-5, TB-303, CS-80, OB-Xa |
-| 7-10 | Casio PT-10 (Piano, Fantasy, Violin, Flute) |
-| 11-15 | 2-op FM (DX7 e-piano, Crystal Tines, Rhodes, Clavinet, Organ) |
-| 16-17 | Wavetable (PPG Wave, Waldorf-style vocal pad) |
-| 18-19 | Casio CZ phase distortion (bass, resonance lead) |
+| 1-6 | Subtractive analog, in the style of the Juno-60, Minimoog, Prophet-5, TB-303, CS-80 and OB-Xa |
+| 7-10 | Casio PT-10-style (Piano, Fantasy, Violin, Flute) |
+| 11-15 | 2-op FM (DX7-style e-piano, Crystal Tines, Rhodes-style, Clavinet-style, Organ) |
+| 16-17 | Wavetable (PPG-style wave, Waldorf-style vocal pad) |
+| 18-19 | CZ-style phase distortion (bass, resonance lead) |
 | 20-21 | Karplus-Strong plucked string (guitar, koto) |
-| 22-23 | Additive Hammond drawbar organ (jazz, gospel) |
+| 22-23 | Additive drawbar organ in the Hammond style (jazz, gospel) |
 | 24-32 | `User_01`..`User_09`, patches written over SysEx and stored in NVS |
 
 Each preset has 16 parameters: Bank A is knobs 1-8, Bank B is knobs 9-16.
@@ -30,7 +30,7 @@ Each preset has 16 parameters: Bank A is knobs 1-8, Bank B is knobs 9-16.
 | Display | 0.96" SSD1306 OLED, I2C, GPIO 8 (SDA) / 9 (SCL) | [Amazon](https://link.amazon/B0cLaqKIj) |
 | Controller | Akai MPK Mini MK4 on the native USB host port (GPIO 19/20) | [Amazon](https://link.amazon/B08fwMN1S) |
 
-The Amazon links are affiliate links: buying through them supports the project at no extra cost to you.
+The Amazon links are affiliate links: buying through them supports the project at no extra cost to you. As an Amazon Associate I earn from qualifying purchases.
 
 The build guide, with the exact parts, tools, a wiring diagram, bring-up steps and troubleshooting, is [HARDWARE.md](HARDWARE.md). Bring-up sketches for each part are in [diagnostics/](diagnostics/README.md).
 
@@ -239,7 +239,7 @@ Other files in `tools/`: `patch_ble_midi.py` (PlatformIO pre-build script), `man
 | `.github/` | CI workflow (see below), issue and pull request templates |
 | `AGENTS.md`, `CLAUDE.md` | Rules, commands and invariants for coding agents |
 | `CONTRIBUTING.md` | How to report problems, add presets and send pull requests |
-| `THIRD_PARTY_NOTICES.md` | Licenses of the libraries in the prebuilt firmware |
+| `THIRD_PARTY_NOTICES.md`, `THIRD_PARTY_LICENSES.md` | Libraries in the prebuilt firmware, and their full license texts |
 | `CONTEXT.md` | Domain glossary and architecture overview |
 | `HARDWARE.md` | Build guide: parts, wiring diagram, bring-up and troubleshooting |
 
@@ -273,7 +273,7 @@ mk4-synth stands on a lot of other people's work.
 - The [Arimo](https://github.com/googlefonts/Arimo) font (Google) for the MK4 screen digits.
 - Teenage Engineering's OP-1 and Pocket Operator screens, which inspired the OLED animations.
 
-Licenses of everything in the prebuilt firmware are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Licenses of everything in the prebuilt firmware are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and, in full, [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ## Contributing
 

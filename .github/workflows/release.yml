@@ -49,4 +49,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" $prerelease --verify-tag \
             --title "mk4-synth $GITHUB_REF_NAME" --notes-file .github/release-notes.md \
             build/release/mk4-synth.bin build/release/manifest.json build/release/SHA256SUMS \
-            THIRD_PARTY_NOTICES.md
+            THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES.md

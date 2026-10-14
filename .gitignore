@@ -3,7 +3,7 @@ firmware/
 *.bin
 *.big
 
-# Local working notes (reverse-engineering, reviews, specs)
+# Local working notes (research, reviews, specs)
 .scratch/
 
 # Build directories

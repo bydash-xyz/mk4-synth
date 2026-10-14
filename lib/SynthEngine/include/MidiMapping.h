@@ -130,7 +130,7 @@ constexpr uint8_t CC_HW_DAW_TRANSPORT_BTN  = 74;  // DAW-port transport button (
 constexpr uint8_t CC_HW_PRESET_PREV        = 80;  // '-' button
 constexpr uint8_t CC_HW_PRESET_NEXT        = 81;  // '+' button
 constexpr uint8_t CC_HW_TAP_TEMPO          = 82;  // TAP TEMPO button (127 = press, 0 = release; DAW port, ch 1).
-                                                  // No SHIFT variant: SHIFT+TAP arrives as CC 17 held, then CC 82 (firmware 0x0801F9AA / 0x0801FFC0)
+                                                  // No SHIFT variant: SHIFT+TAP arrives as CC 17 held, then CC 82
 
 // Custom MK4 maps and other controllers
 constexpr uint8_t CC_HW_CUSTOM_ENCODER     = 14;  // Push-encoder rotation
