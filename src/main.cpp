@@ -16,7 +16,6 @@
 #include "usb_host_midi.h"
 #include "animations/AnimationRegistry.h"
 #include "profiling.h"
-#include "loudness_demo.h"
 #include "animations/KeyboardAnimation.h"
 #include "animations/SynthwaveAnimation.h"
 #include "animations/LissajousAnimation.h"
@@ -162,10 +161,6 @@ void loop() {
     // -------------------------------------------------------------
     g_usbMidi.poll();
     g_bleMidi.poll();
-#ifdef SYNTH_LOUDNESS_DEMO
-    static LoudnessDemo::Player loudnessDemo;
-    loudnessDemo.poll(g_synthEngine, [](uint8_t idx) { g_usbMidi.selectPreset(idx); });
-#endif
 
     uint32_t now = millis();
     g_metroLed.update(g_synthEngine, now);
