@@ -23,8 +23,9 @@ BUILD = os.path.join(ROOT, ".pio", "build", "mk4-synth")
 IMAGE = "mk4-synth.bin"
 
 # Offsets from the Arduino default_16MB.csv layout the board uses (`pio run -t envdump`, FLASH_EXTRA_IMAGES).
-# Flash settings match board esp32s3_120_16_8-qio_opi.
-FLASH_ARGS = ["--flash_mode", "qio", "--flash_freq", "80m", "--flash_size", "16MB"]
+# Header flash mode is DIO, as PlatformIO's upload writes it for this QIO board: the ROM loader can't
+# read the bootloader in QIO at 80 MHz (boot loop at "ets_loader.c 78"); the bootloader switches to QIO itself.
+FLASH_ARGS = ["--flash_mode", "dio", "--flash_freq", "80m", "--flash_size", "16MB"]
 
 
 def boot_app0():
