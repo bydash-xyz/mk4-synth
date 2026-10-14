@@ -32,6 +32,21 @@ The Amazon links are affiliate links: buying through them supports the project a
 
 The build guide, with the exact parts, tools, a wiring diagram, bring-up steps and troubleshooting, is [HARDWARE.md](HARDWARE.md). Bring-up sketches for each part are in [diagnostics/](diagnostics/README.md).
 
+## Flash the firmware
+
+You don't need to install anything: the web flasher writes the latest release from the browser.
+
+1. Build the hardware ([HARDWARE.md](HARDWARE.md)), including bridging the two solder pads under the ESP32-S3 board.
+2. Unplug the MK4 from the board. Connect the board's **COM** port to your computer with a USB-C data cable. Never connect both of the board's USB-C ports to a computer at once.
+3. Open **[bydash.xyz/mk4-synth](https://bydash.xyz/mk4-synth/)** in Chrome or Edge on a desktop computer (Safari and Firefox can't talk to serial ports).
+4. Click **Install**, pick the board's serial port (`usbmodem…` on a Mac, `COM…` on Windows, often shown as "USB Single Serial") and confirm.
+5. Erase the device only on the first install. When updating, leave erase off: it would delete your saved user patches.
+6. When it finishes (about a minute), the board restarts. Plug the MK4 into the board's **USB** port and play.
+
+If the port doesn't appear, try another cable (charge-only cables have no data lines); on Windows, install the WCH CH343 serial driver. If the flasher can't connect, hold **BOOT**, tap **RST**, release **BOOT** and try again.
+
+Prefer the command line? Download `mk4-synth.bin` from [Releases](https://github.com/bydash-xyz/mk4-synth/releases) and run `esptool.py --chip esp32s3 write_flash 0x0 mk4-synth.bin`. To build it yourself, see the quick start below.
+
 ## Quick start
 
 Everything below is a shortcut in the `Makefile`; raw commands are listed after the table. Run `make help` for the current list.
@@ -54,6 +69,7 @@ pip install -r tools/requirements.txt   # Python tools (pyserial, mido, python-r
 | `make render ARGS="--preset 2 --out build/moog.wav"` | Render a preset offline; with no `ARGS` it renders preset 1 to `build/render.wav` |
 | `make manual` / `make manual-pdf` | Regenerate the MK4 manual (`docs/mpk_mini_mk4_manual.html`); `manual-pdf` also writes `build/mpk_mini_mk4_manual.pdf` for printing |
 | `make firmware` | Build the ESP32-S3 firmware (`mk4-synth`) |
+| `make firmware-image` | Build and package `build/release/mk4-synth.bin` with the flasher manifest, as a release does |
 | `make flash` | Build and upload the firmware |
 | `make profile` | Build and upload the profiling firmware (`mk4-synth-profile`) |
 | `make capture SECS=40 FILTER=PROFILE` | Capture the board's USB serial log for 40 s, keeping lines that contain FILTER |
@@ -210,6 +226,7 @@ Other files in `tools/`: `patch_ble_midi.py` (PlatformIO pre-build script), `man
 | `.github/` | CI workflow (see below), issue and pull request templates |
 | `AGENTS.md`, `CLAUDE.md` | Rules, commands and invariants for coding agents |
 | `CONTRIBUTING.md` | How to report problems, add presets and send pull requests |
+| `THIRD_PARTY_NOTICES.md` | Licenses of the libraries in the prebuilt firmware |
 | `CONTEXT.md` | Domain glossary and architecture overview |
 | `HARDWARE.md` | Build guide: parts, wiring diagram, bring-up and troubleshooting |
 

@@ -1,4 +1,4 @@
-.PHONY: help build test test-hw sim render manual manual-pdf firmware flash profile capture dac-test clean
+.PHONY: help build test test-hw sim render manual manual-pdf firmware firmware-image flash profile capture dac-test clean
 
 # Configuration
 BUILD_DIR ?= build
@@ -40,10 +40,13 @@ manual: ## Regenerate docs/mpk_mini_mk4_manual.html from Presets.h
 manual-pdf: ## Regenerate the manual and print it to build/mpk_mini_mk4_manual.pdf (US Letter, needs Chrome)
 	python3 tools/generate_manual.py --pdf
 
-firmware: ## Build ESP32-S3 Rev 2.0 firmware
+firmware: ## Build the mk4-synth firmware
 	$(PIO) run -e mk4-synth
 
-flash: ## Flash ESP32-S3 Rev 2.0 firmware via USB
+firmware-image: firmware ## Package build/release/mk4-synth.bin, manifest.json and SHA256SUMS (as a release does)
+	python3 tools/make_firmware_image.py
+
+flash: ## Flash the mk4-synth firmware over the COM port
 	$(PIO) run -e mk4-synth -t upload
 
 profile: ## Build and flash profiling firmware with boot benchmark and audio timing
