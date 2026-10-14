@@ -34,6 +34,17 @@ The Amazon links are affiliate links: buying through them supports the project a
 
 The build guide, with the exact parts, tools, a wiring diagram, bring-up steps and troubleshooting, is [HARDWARE.md](HARDWARE.md). Bring-up sketches for each part are in [diagnostics/](diagnostics/README.md).
 
+## Screen animations
+
+The synth's OLED shows one of 11 animations that react to what you play; press **SHIFT + `-` / `+`** on the MK4 to switch. Try them all in the browser, with your MIDI keyboard or computer keys, at **[bydash.xyz/mk4-synth/animations](https://bydash.xyz/mk4-synth/animations/)**.
+
+| | | |
+| :---: | :---: | :---: |
+| <img src="docs/animations/keyboard.gif" width="256" alt="Keyboard animation"><br>**Keyboard**: The MK4 keybed as a piano; keys fill with each voice's envelope (default) | <img src="docs/animations/synthwave.gif" width="256" alt="Synthwave animation"><br>**Synthwave**: Neon grid on the tempo; notes pulse the sun, chords raise the mountains | <img src="docs/animations/lissajous.gif" width="256" alt="Lissajous animation"><br>**Lissajous**: Oscilloscope X/Y figure of the held notes, with the chord named |
+| <img src="docs/animations/racer.gif" width="256" alt="Road Racer animation"><br>**Road Racer**: Steer with intervals, speed up with more voices | <img src="docs/animations/choir.gif" width="256" alt="Choir animation"><br>**Choir**: One singer per voice; mouths follow the envelopes | <img src="docs/animations/pond.gif" width="256" alt="Pond animation"><br>**Pond**: Keys ripple the water; the duck paddles over and rides the waves |
+| <img src="docs/animations/plinko.gif" width="256" alt="Plinko animation"><br>**Plinko**: Every note drops a ball; a full bin rings DING | <img src="docs/animations/type.gif" width="256" alt="Typewriter animation"><br>**Typewriter**: Each key swings its own hammer; the marks trace your melody | <img src="docs/animations/knit.gif" width="256" alt="Knit animation"><br>**Knit**: Knits what you play into a sweater pattern |
+| <img src="docs/animations/wash.gif" width="256" alt="Laundromat animation"><br>**Laundromat**: Low, middle and high keys load three washing machines | <img src="docs/animations/seismo.gif" width="256" alt="Seismograph animation"><br>**Seismograph**: Hits are quakes, held notes are tremors | |
+
 ## Flash the firmware
 
 You don't need to install anything: the web flasher writes the latest release from the browser.
