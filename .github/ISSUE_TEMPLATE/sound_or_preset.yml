@@ -1,0 +1,39 @@
+name: Sound or preset
+description: A preset doesn't sound or respond like the instrument it models, or an idea for a new one
+labels: [sound]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary (written by you)
+      description: >
+        At least one sentence in your own words, not AI-generated: which preset, and what sounds
+        off or what you'd like. Any language is fine. Issues without this are closed.
+    validations:
+      required: true
+  - type: input
+    id: preset
+    attributes:
+      label: Preset
+      placeholder: e.g. 3 (Prophet-5), or "new preset"
+    validations:
+      required: true
+  - type: dropdown
+    id: heard
+    attributes:
+      label: Where did you hear it?
+      options:
+        - On the board
+        - Desktop simulator or synth_render
+        - Both
+        - Not applicable (new preset idea)
+  - type: textarea
+    id: what
+    attributes:
+      label: What's off
+      description: Envelope shape, filter, resonance, chorus, velocity response, loudness, ... and how the original behaves.
+  - type: textarea
+    id: recordings
+    attributes:
+      label: Recordings
+      description: A recording of the preset, and a reference recording of the original if you have one (links are fine).

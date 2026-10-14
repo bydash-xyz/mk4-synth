@@ -1,0 +1,8 @@
+# Third-party packages for the scripts in tools/ (install with: pip install -r tools/requirements.txt)
+# serial_capture.py: also available in PlatformIO's own venv (~/.local/pipx/venvs/platformio)
+pyserial>=3.5
+# midi_cli.py, mpk_oled_capture.py
+mido>=1.3
+python-rtmidi>=1.5
+# gen_oled_font.py
+pillow>=10.0

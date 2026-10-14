@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patch Sender</title>
+<!--
+  Sends a PatchDumpV2 SysEx (command 0x05, docs/adr/0006-parameter-list-patch-format.md) over Web MIDI:
+  a list of (ParamId, 14-bit value) entries, every patch-scope ID, about 100 bytes. Pair
+  "MK4-Synth" first in Audio MIDI Setup > MIDI Studio > Bluetooth, then open this file in Chrome
+  or Edge. The firmware answers each dump with an ACK/NACK over BLE (F0 7D 01 0F <cmd> <status> F7);
+  firmware older than ADR-0006 answers 0x05 with NackUnsupported, or not at all.
+-->
+<style>
+  :root {
+    --bg: #f4f2ee;
+    --fg: #161616;
+    --muted: #8a867f;
+    --line: #d9d5ce;
+    --accent: #ff5a1f;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #131313; --fg: #ecebe8; --muted: #77746f; --line: #2c2b29; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 13px/1.4 -apple-system, "Helvetica Neue", sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 16px 140px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 36px; }
+  h1 { font-size: 15px; font-weight: 600; letter-spacing: .08em; margin: 0; }
+  h1 span { color: var(--accent); }
+  .status { font: 11px var(--mono); color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+  .dot.on { background: var(--accent); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 36px 48px; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  section h2 {
+    font: 600 10px var(--mono); letter-spacing: .14em; color: var(--muted);
+    margin: 0 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  .row { display: grid; grid-template-columns: 74px 1fr 64px; align-items: center; gap: 12px; height: 28px; }
+  .row label, .lbl { font: 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .row output { font: 11px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0;
+    --p: 50%;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 2px; background: linear-gradient(90deg, var(--fg) var(--p), var(--line) var(--p));
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 10px; height: 10px; margin-top: -4px; background: var(--fg); border-radius: 0;
+  }
+  input[type=range]:active::-webkit-slider-thumb { background: var(--accent); }
+  input[type=range]::-moz-range-track { height: 2px; background: var(--line); }
+  input[type=range]::-moz-range-progress { height: 2px; background: var(--fg); }
+  input[type=range]::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 0; background: var(--fg); }
+
+  .seg { display: flex; border: 1px solid var(--line); }
+  .seg button {
+    flex: 1; height: 28px; border: 0; background: none; color: var(--muted); cursor: pointer;
+    font: 11px var(--mono); letter-spacing: .06em; display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed=true] { background: var(--fg); color: var(--bg); }
+  .seg svg { width: 18px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1.4; }
+  .toggles { display: flex; gap: 8px; margin-top: 10px; }
+  .toggles .seg { flex: 1; }
+
+  select, input[type=text] {
+    height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 0;
+    background: var(--bg); color: var(--fg); font: 12px var(--mono); min-width: 0;
+  }
+  .wide { width: 100%; }
+
+  footer {
+    position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--line);
+  }
+  .bar { max-width: 760px; margin: 0 auto; padding: 14px 16px; display: grid; gap: 10px;
+         grid-template-columns: 1.4fr 1fr 1fr auto auto; align-items: center; }
+  @media (max-width: 640px) { .bar { grid-template-columns: 1fr 1fr; } .bar .out { grid-column: 1 / -1; } }
+  .btn {
+    height: 32px; padding: 0 16px; border: 1px solid var(--fg); background: none; color: var(--fg);
+    font: 600 11px var(--mono); letter-spacing: .1em; cursor: pointer;
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:disabled { opacity: .35; cursor: default; }
+  .engine { margin-bottom: 36px; }
+  .dim { opacity: .4; }
+  [hidden] { display: none !important; }
+  .msg { max-width: 760px; margin: 0 auto; padding: 0 16px 12px; font: 11px var(--mono); color: var(--muted); min-height: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>PATCH<span>.</span></h1>
+    <div class="status"><span class="dot" id="dot"></span><span id="status">no midi</span></div>
+  </header>
+  <div class="engine" id="engine"></div>
+  <div class="grid" id="grid"></div>
+</main>
+
+<footer>
+  <div class="bar">
+    <select id="out" class="out" title="MIDI output"><option value="">No MIDI</option></select>
+    <select id="slot" title="Target user slot"></select>
+    <input id="name" type="text" maxlength="11" value="USER" spellcheck="false" title="Patch name (11 chars)">
+    <button class="btn" id="audition" disabled title="Load this sound on the synth now; play the MK4 to hear it. Not saved.">TRY ON SYNTH</button>
+    <button class="btn primary" id="save" disabled title="Store this sound in the selected user slot on the synth; kept after reboot">SAVE TO SLOT</button>
+  </div>
+  <div class="msg" id="msg"></div>
+</footer>
+
+<script>
+// ---------------------------------------------------------------------------------------------
+// Parameters. IDs, ranges and curves are the patch-scope table of ADR-0006 (the FastParamUpdate
+// vocabulary); defaults are makeDefaultUserPreset (lib/SynthEngine/include/Presets.h) and the
+// Preset member defaults for the FM fields.
+// ---------------------------------------------------------------------------------------------
+const pct = v => Math.round(v * 100) + ' %';
+const ms  = v => v < 100 ? v.toFixed(1) + ' ms' : v < 1000 ? Math.round(v) + ' ms' : (v / 1000).toFixed(2) + ' s';
+// [key, label, ParamId, min, max, curve, default, format]
+const GROUPS = [
+  ['WAVETABLE', [
+    ['wtPos',    'Position', 0x66, 0,   1,     'lin', 0,    pct],
+    ['wtEnv',    'Env amt',  0x67, 0,   1,     'lin', 0.5,  pct],
+  ]],
+  ['PHASE DIST', [
+    ['pdDcw',    'DCW',      0x69, 0,   1,     'lin', 0.3,  pct],
+  ]],
+  ['PLUCK', [
+    ['plDecay',  'Decay',    0x6A, 100, 10000, 'log', 3000, ms],
+    ['plBright', 'Bright',   0x6B, 0,   1,     'lin', 0.6,  pct],
+    ['plPick',   'Pick pos', 0x6C, 0,   1,     'lin', 0.25, pct],
+  ]],
+  ['DRAWBARS', [
+    ['db0', "16'",     0x70, 0, 8, 'lin', 8, v => String(Math.round(v))],
+    ['db1', "5 1/3'",  0x71, 0, 8, 'lin', 8, v => String(Math.round(v))],
+    ['db2', "8'",      0x72, 0, 8, 'lin', 8, v => String(Math.round(v))],
+    ['db3', "4'",      0x73, 0, 8, 'lin', 0, v => String(Math.round(v))],
+    ['db4', "2 2/3'",  0x74, 0, 8, 'lin', 0, v => String(Math.round(v))],
+    ['db5', "2'",      0x75, 0, 8, 'lin', 0, v => String(Math.round(v))],
+    ['db6', "1 3/5'",  0x76, 0, 8, 'lin', 0, v => String(Math.round(v))],
+    ['db7', "1 1/3'",  0x77, 0, 8, 'lin', 0, v => String(Math.round(v))],
+    ['db8', "1'",      0x78, 0, 8, 'lin', 0, v => String(Math.round(v))],
+    ['perc',  'Perc',  0x6D, 0, 1, 'lin', 0,   pct],
+    ['click', 'Click', 0x6F, 0, 1, 'lin', 0.3, pct],
+  ]],
+  ['FM', [
+    ['modRatio', 'Ratio',    0x60, 0.5, 14,  'lin', 1,   v => v.toFixed(2) + ' :1'],
+    ['modDepth', 'Depth',    0x61, 0,   12,  'lin', 2,   v => v.toFixed(2)],
+    ['modFb',    'Feedback', 0x62, 0,   1.5, 'lin', 0,   v => v.toFixed(2)],
+  ]],
+  ['OSCILLATOR', [
+    ['subOsc',   'Sub',     0x04, 0,   1,     'lin', 0.25, pct],
+    ['detune',   'Detune',  0x05, 0,   50,    'lin', 8,    v => v.toFixed(1) + ' ct'],
+    ['drive',    'Drive',   0x06, 1,   3.5,   'lin', 1,    v => v.toFixed(2) + ' x'],
+  ]],
+  ['FILTER', [
+    ['cutoff',   'Cutoff',  0x01, 20,  20000, 'log', 2000, v => v < 1000 ? Math.round(v) + ' Hz' : (v / 1000).toFixed(2) + ' k'],
+    ['reso',     'Reso',    0x02, 0.5, 25,    'lin', 2,    v => 'Q ' + v.toFixed(1)],
+    ['envAmt',   'Env amt', 0x07, 0,   1,     'lin', 0.5,  pct],
+  ]],
+  ['AMP ENVELOPE', [
+    ['ampA', 'Attack',  0x10, 1, 4000, 'log', 10,  ms],
+    ['ampD', 'Decay',   0x11, 5, 5000, 'log', 300, ms],
+    ['ampS', 'Sustain', 0x12, 0, 1,    'lin', 0.7, pct],
+    ['ampR', 'Release', 0x13, 5, 5000, 'log', 350, ms],
+  ]],
+  ['FILTER ENVELOPE', [
+    ['fltA', 'Attack',  0x14, 1, 4000, 'log', 20,  ms],
+    ['fltD', 'Decay',   0x15, 5, 5000, 'log', 350, ms],
+    ['fltS', 'Sustain', 0x16, 0, 1,    'lin', 0.3, pct],
+    ['fltR', 'Release', 0x17, 5, 5000, 'log', 300, ms],
+  ]],
+  ['CHORUS', [
+    ['choRate',  'Rate',  0x21, 0.1, 5, 'lin', 0.5, v => v.toFixed(2) + ' Hz'],
+    ['choDepth', 'Depth', 0x22, 0.5, 5, 'lin', 2.5, v => v.toFixed(2) + ' ms'],
+    ['choMix',   'Mix',   0x23, 0,   1, 'lin', 0.5, pct],
+  ]],
+  // Stereo tremolo in every engine: the FM e-piano auto-pan, the organ's Leslie
+  ['TREMOLO', [
+    ['tremDepth','Depth',    0x63, 0,   1,   'lin', 0,   pct],
+    ['tremRate', 'Rate',     0x64, 0.1, 10,  'lin', 4.5, v => v.toFixed(2) + ' Hz'],
+  ]],
+  ['VOICE', [
+    ['glide', 'Glide', 0x31, 0, 1000, 'lin', 0, v => Math.round(v) + ' ms'],
+  ]],
+];
+// Enum / bool IDs, sent as the raw index.
+const ENUMS = [
+  [0x03, () => state.waveform],
+  [0x08, () => state.engine],
+  [0x65, () => state.wtTable],
+  [0x68, () => state.pdWave],
+  [0x6E, () => state.percHarm],
+  [0x09, () => state.character],
+  [0x20, () => +state.chorus],
+  [0x30, () => state.voiceMode],
+  [0x32, () => +state.porta],
+  [0x33, () => +state.legato],
+];
+// Voicing (ID 0x09) = factory SynthModel index + 1; 0 = generic user voicing.
+const CHARACTERS = [
+  ['None', 0],
+  ['Juno-60', 0 + 1], ['Minimoog', 1 + 1], ['Prophet-5', 2 + 1], ['TB-303', 3 + 1], ['CS-80', 4 + 1], ['OB-Xa', 5 + 1],
+  ['DX E-Piano', 10 + 1], ['Crystal Tines', 11 + 1], ['Warm Rhodes', 12 + 1], ['Clavinet', 13 + 1], ['Drawbar Organ', 14 + 1],
+  ['PPG Wave', 15 + 1], ['Wave Vox', 16 + 1], ['CZ Bass', 17 + 1], ['CZ Reso', 18 + 1],
+  ['KS Guitar', 19 + 1], ['KS Koto', 20 + 1], ['B3 Jazz', 21 + 1], ['B3 Gospel', 22 + 1],
+];
+
+const DEFAULT_STATE = { engine: 0, waveform: 0, voiceMode: 0, chorus: false, porta: false, legato: false, character: 0,
+                        wtTable: 0, pdWave: 0, percHarm: 1 };
+const state = { ...DEFAULT_STATE };
+const params = {};
+
+// Starting points: overrides on top of the defaults above (slider keys and state keys).
+const PRESETS = {
+  INIT: {},
+  // Slow CS-80 style pad: detuned saws and sub under a dark filter that opens over seconds,
+  // a long swell and tail, and a slow, deep chorus for width.
+  COSMOS: {
+    character: 4 + 1, waveform: 0, chorus: true,
+    subOsc: 0.3, detune: 18, drive: 1.15,
+    cutoff: 900, reso: 6, envAmt: 0.35,
+    ampA: 1800, ampD: 2500, ampS: 0.85, ampR: 4500,
+    fltA: 2500, fltD: 4000, fltS: 0.4, fltR: 4000,
+    choRate: 0.25, choDepth: 4, choMix: 0.7,
+  },
+};
+const refreshers = [];
+
+// slider position (0..1) <-> value
+const toVal = (p, t) => p.curve === 'log' ? p.min * Math.pow(p.max / p.min, t) : p.min + t * (p.max - p.min);
+const toPos = (p, v) => p.curve === 'log' ? Math.log(v / p.min) / Math.log(p.max / p.min) : (v - p.min) / (p.max - p.min);
+
+// ---------------------------------------------------------------------------------------------
+// UI
+// ---------------------------------------------------------------------------------------------
+const el = (tag, attrs = {}, kids = []) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === 'text' ? n.textContent = v : n.setAttribute(k, v);
+  for (const k of kids) n.append(k);
+  return n;
+};
+
+function segmented(key, options, onchange) {
+  const seg = el('div', { class: 'seg', role: 'group' });
+  refreshers.push(() => seg.querySelectorAll('button').forEach((x, i) =>
+    x.setAttribute('aria-pressed', String(state[key] === options[i][1]))));
+  options.forEach(([label, value, svg]) => {
+    const b = el('button', { type: 'button', 'aria-pressed': String(state[key] === value) });
+    if (svg) b.innerHTML = svg;
+    b.append(label);
+    b.onclick = () => {
+      state[key] = value;
+      seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      onchange?.();
+    };
+    seg.append(b);
+  });
+  return seg;
+}
+function toggle(key, label) {
+  const b = el('button', { type: 'button', 'aria-pressed': String(state[key]), text: label });
+  b.onclick = () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); };
+  refreshers.push(() => b.setAttribute('aria-pressed', String(state[key])));
+  return el('div', { class: 'seg' }, [b]);
+}
+
+const WAVES = [
+  ['SAW', 0, '<svg viewBox="0 0 18 10"><path d="M1 9 L9 1 V9 L17 1 V9"/></svg>'],
+  ['SQR', 1, '<svg viewBox="0 0 18 10"><path d="M1 9 V1 H9 V9 H17 V1"/></svg>'],
+  ['TRI', 2, '<svg viewBox="0 0 18 10"><path d="M1 9 L5 1 L13 9 L17 1"/></svg>'],
+];
+
+const sections = {};
+// Engines: 0 Subtractive, 1 FM, 2 Wavetable, 3 Phase distortion, 4 Pluck, 5 Additive (EngineMode, ID 0x08).
+// Each engine shows its own section and dims the shared ones it does not use. Every ID is sent in every mode.
+const ENGINE_SECTION = { 1: 'FM', 2: 'WAVETABLE', 3: 'PHASE DIST', 4: 'PLUCK', 5: 'DRAWBARS' };
+function applyEngine() {
+  const e = state.engine;
+  for (const [mode, name] of Object.entries(ENGINE_SECTION)) sections[name].hidden = +mode !== e;
+  sections['OSCILLATOR'].classList.toggle('dim', e !== 0 && e !== 2);
+  sections['FILTER'].classList.toggle('dim', e !== 0 && e !== 2);
+  sections['FILTER ENVELOPE'].classList.toggle('dim', e === 4);
+}
+
+function applyPreset(name) {
+  const pre = PRESETS[name];
+  Object.assign(state, DEFAULT_STATE);
+  for (const [k, p] of Object.entries(params)) p.set(k in pre ? pre[k] : p.def);
+  for (const k of Object.keys(DEFAULT_STATE)) if (k in pre) state[k] = pre[k];
+  refreshers.forEach(f => f());
+  applyEngine();
+  if (name !== 'INIT') $('name').value = name;
+}
+
+function build() {
+  const pre = el('select', { class: 'wide', 'aria-label': 'Preset' });
+  Object.keys(PRESETS).forEach(n => pre.append(el('option', { value: n, text: 'Preset: ' + n })));
+  pre.onchange = () => applyPreset(pre.value);
+  $('engine').append(pre, el('div', { style: 'height:10px' }));
+  $('engine').append(segmented('engine', [['SUBTRACTIVE', 0], ['FM', 1], ['WAVETABLE', 2], ['CZ PD', 3], ['PLUCK', 4], ['ORGAN', 5]], applyEngine));
+  const grid = $('grid');
+  for (const [title, list] of GROUPS) {
+    const sec = sections[title] = el('section', {}, [el('h2', { text: title })]);
+    if (title === 'OSCILLATOR') { sec.append(segmented('waveform', WAVES)); sec.lastChild.style.marginBottom = '10px'; }
+    if (title === 'WAVETABLE') { sec.append(segmented('wtTable', [['PPG', 0], ['ANALOG', 1], ['VOX', 2], ['GLASS', 3]])); sec.lastChild.style.marginBottom = '10px'; }
+    if (title === 'PHASE DIST') {
+      const sync = () => refreshers.forEach(f => f()); // two button rows share state.pdWave
+      sec.append(segmented('pdWave', [['SAW', 0], ['SQR', 1], ['PLS', 2], ['DBL', 3]], sync));
+      sec.append(el('div', { class: 'toggles' }, [segmented('pdWave', [['RESO I', 4], ['RESO II', 5], ['RESO III', 6]], sync)]));
+      sec.lastChild.style.marginBottom = '10px';
+    }
+    for (const [key, label, pid, min, max, curve, def, fmt] of list) {
+      const p = params[key] = { pid, min, max, curve, value: def, def, fmt };
+      const range = el('input', { type: 'range', min: 0, max: 1000, step: 1, id: key, 'aria-label': label });
+      const out = el('output', { for: key });
+      const sync = () => {
+        out.textContent = fmt(p.value);
+        range.style.setProperty('--p', (range.value / 10) + '%');
+      };
+      range.oninput = () => { p.value = toVal(p, range.value / 1000); sync(); };
+      p.set = v => { p.value = v; range.value = Math.round(toPos(p, v) * 1000); sync(); };
+      p.set(def);
+      sec.append(el('div', { class: 'row' }, [el('label', { for: key, text: label }), range, out]));
+    }
+    if (title === 'CHORUS') sec.append(el('div', { class: 'toggles' }, [toggle('chorus', 'CHORUS')]));
+    if (title === 'DRAWBARS') sec.append(el('div', { class: 'toggles' }, [segmented('percHarm', [['PERC 2ND', 0], ['PERC 3RD', 1]])]));
+    if (title === 'VOICE') {
+      sec.append(el('div', { class: 'toggles' }, [segmented('voiceMode', [['POLY', 0], ['MONO', 1]])]));
+      sec.append(el('div', { class: 'toggles' }, [toggle('porta', 'PORTAMENTO'), toggle('legato', 'LEGATO')]));
+      const sel = el('select', { class: 'wide', 'aria-label': 'Character' });
+      CHARACTERS.forEach(([c, v]) => sel.append(el('option', { value: v, text: 'Character: ' + c })));
+      sel.onchange = () => state.character = +sel.value;
+      refreshers.push(() => sel.value = state.character);
+      sec.append(el('div', { class: 'toggles' }, [sel]));
+    }
+    grid.append(sec);
+  }
+  applyEngine();
+  const slot = $('slot');
+  // User slots 24..32 (ADR-0007)
+  for (let s = 24; s <= 32; s++) slot.append(el('option', { value: s, text: 'Slot ' + s + '  U' + String(s - 23).padStart(2, '0') }));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Encoding: PatchDumpV2 (ADR-0006)
+//   F0 7D 01 05 <slot> <nameLen> <name> {<id> <msb> <lsb>}... <xor> F7
+// ---------------------------------------------------------------------------------------------
+const clamp01 = x => Math.min(1, Math.max(0, x));
+const norm = p => clamp01(p.curve === 'log'
+  ? Math.log(p.value / p.min) / Math.log(p.max / p.min)
+  : (p.value - p.min) / (p.max - p.min));
+
+function patchEntries() {
+  const list = [];
+  for (const p of Object.values(params)) list.push([p.pid, Math.round(norm(p) * 16383)]);
+  for (const [pid, get] of ENUMS) list.push([pid, get()]);
+  return list.sort((a, b) => a[0] - b[0]);
+}
+
+function patchDumpV2(name, slot) {
+  const ascii = name.replace(/[^\x20-\x7e]/g, '').slice(0, 11);
+  const body = [slot & 0x7f, ascii.length, ...Array.from(ascii, c => c.charCodeAt(0))];
+  for (const [pid, v] of patchEntries()) body.push(pid & 0x7f, (v >> 7) & 0x7f, v & 0x7f);
+  const sum = body.reduce((c, b) => c ^ b, 0) & 0x7f;
+  return [0xf0, 0x7d, 0x01, 0x05, ...body, sum, 0xf7];
+}
+window.encodePatch = (name, slot) => patchDumpV2(name, slot); // for console / tests
+window.applyPreset = applyPreset;
+
+// ---------------------------------------------------------------------------------------------
+// Web MIDI
+// ---------------------------------------------------------------------------------------------
+let midi = null, input = null, pending = null;
+function $(id) { return document.getElementById(id); }
+const say = t => $('msg').textContent = t;
+const NACK = ['ACK', 'checksum error', 'invalid slot', 'corrupted', 'unsupported'];
+
+function refreshOutputs() {
+  const sel = $('out'), prev = sel.value;
+  sel.textContent = '';
+  const outs = [...midi.outputs.values()];
+  if (!outs.length) sel.append(el('option', { value: '', text: 'No MIDI outputs' }));
+  outs.forEach(o => sel.append(el('option', { value: o.id, text: o.name })));
+  const synth = outs.find(o => /esp32|synth/i.test(o.name));
+  sel.value = outs.some(o => o.id === prev) ? prev : synth ? synth.id : outs[0]?.id ?? '';
+  const ok = !!sel.value;
+  $('audition').disabled = $('save').disabled = !ok;
+  $('dot').classList.toggle('on', !!synth && sel.value === synth.id);
+  $('status').textContent = synth ? synth.name.toLowerCase() : ok ? 'synth not found' : 'no outputs';
+  attachInput();
+}
+
+// Handshakes come back on the input port with the same name as the chosen output.
+function attachInput() {
+  const outName = midi.outputs.get($('out').value)?.name;
+  const ins = [...midi.inputs.values()];
+  const next = ins.find(i => outName && i.name === outName) ?? ins.find(i => /esp32|synth/i.test(i.name)) ?? null;
+  if (next === input) return;
+  if (input) input.onmidimessage = null;
+  input = next;
+  if (input) input.onmidimessage = onMessage;
+}
+
+// F0 7D 01 0F <refCmd> <status> F7
+function onMessage(e) {
+  const d = e.data;
+  if (!pending || d.length < 7 || d[0] !== 0xf0 || d[1] !== 0x7d || d[2] !== 0x01 || d[3] !== 0x0f) return;
+  if (d[4] !== 0x05) return;
+  const { slot, len } = pending;
+  clearTimeout(pending.timer);
+  pending = null;
+  const st = d[5];
+  if (st === 0) say(slot
+    ? `Saved to slot ${slot} (U${String(slot - 23).padStart(2, '0')}). Select it on the synth to play it.`
+    : 'Loaded on the synth (not saved). Play the MK4 to hear it through the synth\'s speaker.');
+  else if (st === 4) say('NACK: unsupported. The firmware predates PatchDumpV2 (ADR-0006).');
+  else say('NACK: ' + (NACK[st] ?? 'status ' + st) + '.');
+}
+
+async function initMidi() {
+  if (!navigator.requestMIDIAccess) { say('Web MIDI unavailable. Open this page in Chrome or Edge.'); return; }
+  try {
+    midi = await navigator.requestMIDIAccess({ sysex: true });
+  } catch (e) {
+    say('MIDI access denied (' + e.name + '). SysEx permission is required.');
+    return;
+  }
+  midi.onstatechange = refreshOutputs;
+  refreshOutputs();
+  if (!/^(mk4-synth|esp32)/.test($('status').textContent)) say('Pair MK4-Synth in Audio MIDI Setup > MIDI Studio > Bluetooth.');
+  else say('This page makes no sound itself: it sends patches to the synth, which plays them when you play the MK4.');
+}
+
+function send(slot) {
+  const out = midi?.outputs.get($('out').value);
+  if (!out) return;
+  const msg = patchDumpV2($('name').value || 'USER', slot);
+  if (pending) clearTimeout(pending.timer);
+  pending = {
+    slot, len: msg.length,
+    timer: setTimeout(() => { pending = null; say(`Sent ${msg.length} B; no reply (firmware older than ADR-0006?).`); }, 1500),
+  };
+  try {
+    out.send(msg);
+    say(`Sent ${msg.length} B${slot ? ' to slot ' + slot : ' to live buffer'}; waiting for reply...`);
+  } catch (e) {
+    clearTimeout(pending.timer);
+    pending = null;
+    say('Send failed: ' + e.message);
+  }
+}
+
+build();
+$('out').onchange = refreshOutputs;
+$('audition').onclick = () => send(0);
+$('save').onclick = () => send(+$('slot').value);
+initMidi();
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+name: Hardware report
+description: Results from a build on a board, DAC or display other than the reference build in HARDWARE.md
+labels: [hardware]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary (written by you)
+      description: >
+        At least one sentence in your own words, not AI-generated: what hardware you have and
+        what you tried or want to get working. Any language is fine. Issues without this are closed.
+    validations:
+      required: true
+  - type: input
+    id: board
+    attributes:
+      label: ESP32-S3 board or module
+      placeholder: e.g. ESP32-S3-DevKitC-1 N8R2
+    validations:
+      required: true
+  - type: input
+    id: parts
+    attributes:
+      label: DAC, display and power
+      placeholder: e.g. UDA1334A, SH1106 1.3" OLED, USB-C from a 2 A charger
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics results
+      description: Which sketches in diagnostics/ passed or failed, and pin changes you made.
+  - type: textarea
+    id: profile
+    attributes:
+      label: Profiling capture (optional)
+      description: "`make profile`, then `make capture` while playing chords."
+      render: text
+  - type: textarea
+    id: results
+    attributes:
+      label: What worked / what didn't
+      description: Build output, serial log, photos. Don't attach Akai firmware or software files.

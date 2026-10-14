@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 600" width="880" height="600" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13">
+  <title>mk4-synth wiring: ESP32-S3 N16R8 to PCM5102A DAC, SSD1306 OLED and Akai MPK Mini MK4</title>
+  <rect width="880" height="600" fill="#ffffff"/>
+
+  <!-- Wires (drawn first so the boards sit on top) -->
+  <g fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M430 100 H620" stroke="#d32f2f"/>
+    <path d="M430 140 H620" stroke="#212121"/>
+    <path d="M620 180 H590 V140" stroke="#212121"/>
+    <path d="M430 230 H620" stroke="#1e88e5"/>
+    <path d="M430 270 H620" stroke="#43a047"/>
+    <path d="M430 310 H620" stroke="#8e24aa"/>
+    <path d="M430 400 H620" stroke="#00897b"/>
+    <path d="M430 430 H620" stroke="#f9a825"/>
+    <path d="M430 460 H620" stroke="#ef6c00"/>
+    <path d="M430 490 H620" stroke="#212121"/>
+    <path d="M200 160 H260" stroke="#757575" stroke-width="6"/>
+    <path d="M200 430 H260" stroke="#757575" stroke-width="6"/>
+  </g>
+  <circle cx="590" cy="140" r="5" fill="#212121"/>
+
+  <!-- Wire labels -->
+  <g font-size="12" fill="#424242" text-anchor="middle">
+    <text x="525" y="93">5V (red)</text>
+    <text x="525" y="133">GND (black)</text>
+    <text x="525" y="223">BCK (blue)</text>
+    <text x="525" y="263">LRCK (green)</text>
+    <text x="525" y="303">DIN (purple)</text>
+    <text x="525" y="393">SDA (teal)</text>
+    <text x="525" y="423">SCL (yellow)</text>
+    <text x="525" y="453">3V3 (orange)</text>
+    <text x="525" y="483">GND (black)</text>
+    <text x="605" y="200" text-anchor="end">SCK to GND</text>
+  </g>
+
+  <!-- ESP32-S3 board -->
+  <rect x="260" y="50" width="170" height="480" rx="10" fill="#1b5e20" stroke="#0d3311" stroke-width="2"/>
+  <text x="345" y="76" fill="#ffffff" font-weight="700" text-anchor="middle">ESP32-S3</text>
+  <text x="345" y="94" fill="#c8e6c9" font-size="12" text-anchor="middle">N16R8 dual USB-C</text>
+  <g fill="#ffffff" font-size="12" font-family="Menlo, Consolas, monospace" text-anchor="end">
+    <text x="420" y="104">5V</text>
+    <text x="420" y="144">GND</text>
+    <text x="420" y="234">GPIO 4</text>
+    <text x="420" y="274">GPIO 5</text>
+    <text x="420" y="314">GPIO 6</text>
+    <text x="420" y="404">GPIO 8</text>
+    <text x="420" y="434">GPIO 9</text>
+    <text x="420" y="464">3V3</text>
+    <text x="420" y="494">GND</text>
+  </g>
+  <g fill="#ffd54f">
+    <circle cx="430" cy="100" r="5"/><circle cx="430" cy="140" r="5"/>
+    <circle cx="430" cy="230" r="5"/><circle cx="430" cy="270" r="5"/><circle cx="430" cy="310" r="5"/>
+    <circle cx="430" cy="400" r="5"/><circle cx="430" cy="430" r="5"/>
+    <circle cx="430" cy="460" r="5"/><circle cx="430" cy="490" r="5"/>
+  </g>
+  <rect x="252" y="142" width="22" height="36" rx="5" fill="#9e9e9e" stroke="#616161"/>
+  <rect x="252" y="412" width="22" height="36" rx="5" fill="#9e9e9e" stroke="#616161"/>
+  <g fill="#ffffff" font-size="12" font-weight="700">
+    <text x="282" y="157">COM</text>
+    <text x="282" y="427">USB</text>
+  </g>
+  <g fill="#c8e6c9" font-size="11">
+    <text x="282" y="172">CH343P serial</text>
+    <text x="282" y="442">OTG host</text>
+    <text x="282" y="456">GPIO 19 / 20</text>
+  </g>
+  <g fill="#ffcc80" font-size="11">
+    <text x="282" y="200">Bridge pads underneath:</text>
+    <text x="282" y="215">IN-OUT and USB-OTG</text>
+  </g>
+
+  <!-- Power source -->
+  <rect x="20" y="115" width="180" height="90" rx="8" fill="#f5f5f5" stroke="#9e9e9e"/>
+  <text x="110" y="145" text-anchor="middle" font-weight="700" fill="#212121">5V USB charger</text>
+  <text x="110" y="164" text-anchor="middle" fill="#424242" font-size="12">2 A or more</text>
+  <text x="110" y="182" text-anchor="middle" fill="#424242" font-size="12">(or the computer,</text>
+  <text x="110" y="197" text-anchor="middle" fill="#424242" font-size="12">for flashing and logs)</text>
+
+  <!-- MK4 -->
+  <rect x="20" y="385" width="180" height="90" rx="8" fill="#f5f5f5" stroke="#9e9e9e"/>
+  <text x="110" y="417" text-anchor="middle" font-weight="700" fill="#212121">Akai MPK Mini MK4</text>
+  <text x="110" y="437" text-anchor="middle" fill="#424242" font-size="12">USB-C data cable,</text>
+  <text x="110" y="453" text-anchor="middle" fill="#424242" font-size="12">powered by the board</text>
+
+  <!-- PCM5102A -->
+  <rect x="620" y="50" width="220" height="290" rx="10" fill="#6a1b9a" stroke="#38006b" stroke-width="2"/>
+  <text x="730" y="76" fill="#ffffff" font-weight="700" text-anchor="middle">PCM5102A DAC</text>
+  <text x="730" y="94" fill="#e1bee7" font-size="12" text-anchor="middle">GY-PCM5102 (purple)</text>
+  <g fill="#ffffff" font-size="12" font-family="Menlo, Consolas, monospace">
+    <text x="632" y="104">VIN</text>
+    <text x="632" y="144">GND</text>
+    <text x="632" y="184">SCK</text>
+    <text x="632" y="234">BCK</text>
+    <text x="632" y="274">LCK</text>
+    <text x="632" y="314">DIN</text>
+  </g>
+  <g fill="#ffd54f">
+    <circle cx="620" cy="100" r="5"/><circle cx="620" cy="140" r="5"/><circle cx="620" cy="180" r="5"/>
+    <circle cx="620" cy="230" r="5"/><circle cx="620" cy="270" r="5"/><circle cx="620" cy="310" r="5"/>
+  </g>
+  <rect x="790" y="250" width="50" height="40" rx="6" fill="#212121"/>
+  <text x="815" y="275" fill="#ffffff" font-size="11" text-anchor="middle">3.5 mm</text>
+  <text x="815" y="308" fill="#e1bee7" font-size="11" text-anchor="middle">line out</text>
+
+  <!-- SSD1306 -->
+  <rect x="620" y="370" width="220" height="150" rx="10" fill="#0d47a1" stroke="#002171" stroke-width="2"/>
+  <text x="740" y="440" fill="#ffffff" font-weight="700" text-anchor="middle">0.96" OLED</text>
+  <text x="740" y="458" fill="#bbdefb" font-size="12" text-anchor="middle">SSD1306 128×64</text>
+  <text x="740" y="474" fill="#bbdefb" font-size="12" text-anchor="middle">I²C address 0x3C</text>
+  <g fill="#ffffff" font-size="12" font-family="Menlo, Consolas, monospace">
+    <text x="632" y="404">SDA</text>
+    <text x="632" y="434">SCL</text>
+    <text x="632" y="464">VCC</text>
+    <text x="632" y="494">GND</text>
+  </g>
+  <g fill="#ffd54f">
+    <circle cx="620" cy="400" r="5"/><circle cx="620" cy="430" r="5"/>
+    <circle cx="620" cy="460" r="5"/><circle cx="620" cy="490" r="5"/>
+  </g>
+
+  <text x="20" y="565" fill="#616161" font-size="12">Pins are grouped by function, not drawn in their physical order. Any GND or 3V3 header pin works; check the silkscreen on your parts.</text>
+  <text x="20" y="583" fill="#616161" font-size="12">Never plug both USB-C ports into a computer once USB-OTG is bridged: the two 5V supplies would feed each other.</text>
+</svg>

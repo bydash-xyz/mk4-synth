@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-tests:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # CMakeLists.txt searches /opt/homebrew (arm64 runners) and /usr/local for these.
+      # Installing them makes synth_sim and mpk_display build too, catching sim breakage.
+      - name: Install PortAudio and RtMidi
+        run: brew install portaudio rtmidi
+
+      - name: Configure
+        run: cmake -B build -S .
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Verify simulator targets were built
+        run: test -x build/synth_sim && test -x build/mpk_display
+
+      # Tests labelled "hardware" need a physical MPK Mini MK4 and are skipped.
+      - name: Test
+        run: ctest --test-dir build -LE hardware --output-on-failure
+
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build esp32s3_rev2
+        run: pio run -e esp32s3_rev2
+
+      - name: Build esp32s3_rev2_profile
+        run: pio run -e esp32s3_rev2_profile

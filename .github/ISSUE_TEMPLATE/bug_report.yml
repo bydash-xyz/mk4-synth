@@ -1,0 +1,51 @@
+name: Bug report
+description: The firmware, simulator or a tool misbehaves (crash, stuck notes, static, wrong screen, ...)
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary (written by you)
+      description: >
+        At least one sentence in your own words, not AI-generated: what you saw and what you
+        expected. Any language is fine. Issues without this are closed.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it happen?
+      options:
+        - On the board (ESP32-S3 firmware)
+        - Desktop simulator or synth_render
+        - A tool (mpk_display, synthctl.py, patch_sender.html, ...)
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Commit and hardware
+      description: The commit you built, and your board, DAC and display if they differ from HARDWARE.md.
+      placeholder: e.g. 2a9b287, reference build
+    validations:
+      required: true
+  - type: input
+    id: mk4
+    attributes:
+      label: MK4 firmware version
+      description: "`./build/mpk_display --identify` prints it."
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Preset number, what you played or turned, and what happened.
+  - type: textarea
+    id: log
+    attributes:
+      label: Serial log or tool output
+      description: "`python3 tools/synthctl.py capture 40` for the board. Don't attach Akai firmware or software files."
+      render: text
+  - type: textarea
+    id: details
+    attributes:
+      label: Other details
+      description: Recordings, photos, anything else. AI-assisted text is fine here.

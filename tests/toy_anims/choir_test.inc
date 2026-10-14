@@ -1,0 +1,71 @@
+// Choir: one blob singer per voice (included by tests/test_toy_animations.cpp)
+
+void test_choir() {
+    std::cout << "[Test] ChoirAnimation..." << std::endl;
+    ChoirAnimation anim;
+    anim.init(); prime(anim);
+    assert(std::strcmp(anim.getName(), "Choir") == 0);
+    ToyVoices tv;
+    run(anim, tv, 0.5f);
+    for (int v = 0; v < 8; ++v) assert(anim.getHop(v) == 0.0f && anim.getMouth(v) < 0.01f);
+
+    // A chord: every struck voice's singer hops and opens its mouth; silent singers stay put
+    tv.noteOn(48, 120); tv.noteOn(60, 120); tv.noteOn(84, 120);
+    run(anim, tv, 0.1f);
+    for (int v = 0; v < 3; ++v) assert(anim.getHop(v) < -2.0f);
+    for (int v = 3; v < 8; ++v) assert(anim.getHop(v) == 0.0f);
+    assert(anim.getNoteGlyphCount() == 3);
+    run(anim, tv, 0.6f); // landed, sustaining at 0.6
+    for (int v = 0; v < 3; ++v) {
+        assert(anim.getHop(v) == 0.0f);
+        assert(anim.getMouth(v) > 0.5f);
+        assert(anim.getArms(v) > 0.5f);
+    }
+    assert(anim.getMouth(3) < 0.01f);
+    // Higher notes stand taller: 48 -> 2.5 px, 60 -> 5, 84 -> 10
+    assert(anim.getStretch(0) < anim.getStretch(1) && anim.getStretch(1) < anim.getStretch(2));
+    assert(std::fabs(anim.getStretch(2) - 10.0f) < 0.5f);
+
+    // Louder notes hop higher
+    {
+        ChoirAnimation soft, loud;
+        soft.init(); loud.init(); prime(soft); prime(loud);
+        ToyVoices a, b;
+        a.noteOn(60, 10); b.noteOn(60, 127);
+        float minSoft = 0.0f, minLoud = 0.0f;
+        for (int i = 0; i < 8; ++i) {
+            run(soft, a, 0.05f); run(loud, b, 0.05f);
+            minSoft = std::fmin(minSoft, soft.getHop(0));
+            minLoud = std::fmin(minLoud, loud.getHop(0));
+        }
+        assert(minLoud < minSoft - 1.0f);
+    }
+
+    U8G2 d;
+    d.begin();
+    anim.render(d, tv.ctx);
+    assert(blueZoneOnly(d));
+    for (int x = 0; x < 128; ++x) assert(d.getPixel(x, 62)); // floor line
+    assert(d.getPixel(ChoirAnimation::slotX(0) - 6, 50));        // singer 0's left side
+    assert(litPixels(d, 0, 16, 127, 61) > 100);
+
+    // Release everything; after 6 s of quiet the choir sags and sleeps with z's floating up
+    tv.noteOff(48); tv.noteOff(60); tv.noteOff(84);
+    run(anim, tv, 5.0f);
+    assert(!anim.isAsleep());
+    run(anim, tv, 2.5f);
+    assert(anim.isAsleep());
+    assert(anim.getZCount() > 0);
+    assert(anim.getStretch(4) < -2.0f);
+    d.clearBuffer();
+    anim.render(d, tv.ctx);
+    assert(blueZoneOnly(d));
+
+    // Playing wakes them and clears the z's; reset() restores the initial state
+    tv.noteOn(60, 100);
+    run(anim, tv, 0.1f);
+    assert(!anim.isAsleep() && anim.getZCount() == 0);
+    anim.reset(); prime(anim);
+    assert(anim.getNoteGlyphCount() == 0 && anim.getHop(0) == 0.0f && !anim.isAsleep());
+    std::cout << "  -> ChoirAnimation tests PASSED!" << std::endl;
+}

@@ -1,0 +1,26 @@
+# Akai firmware, software and sample data -- copyrighted, never commit
+firmware/
+*.bin
+*.big
+
+# Local working notes (reverse-engineering, reviews, specs)
+.scratch/
+
+# Build directories
+build/
+.pio/
+.vscode/
+.claude/
+
+# macOS metadata
+.DS_Store
+
+# Temporary files
+*.o
+*.dylib
+*.a
+*.pyc
+__pycache__/
+compile_commands.json
+build_test_engine
+*.log
