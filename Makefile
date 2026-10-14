@@ -41,13 +41,13 @@ manual-pdf: ## Regenerate the manual and print it to build/mpk_mini_mk4_manual.p
 	python3 tools/generate_manual.py --pdf
 
 firmware: ## Build ESP32-S3 Rev 2.0 firmware
-	$(PIO) run -e esp32s3_rev2
+	$(PIO) run -e mk4-synth
 
 flash: ## Flash ESP32-S3 Rev 2.0 firmware via USB
-	$(PIO) run -e esp32s3_rev2 -t upload
+	$(PIO) run -e mk4-synth -t upload
 
 profile: ## Build and flash profiling firmware with boot benchmark and audio timing
-	$(PIO) run -e esp32s3_rev2_profile -t upload
+	$(PIO) run -e mk4-synth-profile -t upload
 
 capture: ## Capture the board's serial log for SECS seconds, keeping lines matching FILTER
 	$(PIO_PY) tools/synthctl.py capture $(SECS) -f $(FILTER)

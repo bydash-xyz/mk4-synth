@@ -10,7 +10,7 @@ why. Any language is fine. PRs without it are closed (see CONTRIBUTING.md). -->
 ## Checklist
 
 - [ ] `make test` passes, with no new build warnings
-- [ ] `pio run -e esp32s3_rev2` builds
+- [ ] `pio run -e mk4-synth` builds
 - [ ] `Presets.h` or knob mappings unchanged, **or** the manual is regenerated (`make manual`)
 - [ ] patch format unchanged, **or** the change follows ADR-0006 and older saved patches still load
 - [ ] tested by: desktop tests only / simulator / flashed to a board (board: )

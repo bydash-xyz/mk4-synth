@@ -1,6 +1,6 @@
 #pragma once
 // On-demand profiling for the ESP32-S3 firmware. Compiled in only when SYNTH_PROFILE is defined
-// (build the `esp32s3_rev2_profile` PlatformIO environment); in the normal firmware every macro
+// (build the `mk4-synth-profile` PlatformIO environment); in the normal firmware every macro
 // below expands to nothing, so there is no code, data or runtime cost.
 //
 // Output goes to the USB serial port once per second (~344 audio blocks):

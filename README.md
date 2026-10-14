@@ -53,9 +53,9 @@ pip install -r tools/requirements.txt   # Python tools (pyserial, mido, python-r
 | `make sim ARGS="--preset 3"` | Run the desktop simulator |
 | `make render ARGS="--preset 2 --out build/moog.wav"` | Render a preset offline; with no `ARGS` it renders preset 1 to `build/render.wav` |
 | `make manual` / `make manual-pdf` | Regenerate the MK4 manual (`docs/mpk_mini_mk4_manual.html`); `manual-pdf` also writes `build/mpk_mini_mk4_manual.pdf` for printing |
-| `make firmware` | Build the ESP32-S3 firmware (`esp32s3_rev2`) |
+| `make firmware` | Build the ESP32-S3 firmware (`mk4-synth`) |
 | `make flash` | Build and upload the firmware |
-| `make profile` | Build and upload the profiling firmware (`esp32s3_rev2_profile`) |
+| `make profile` | Build and upload the profiling firmware (`mk4-synth-profile`) |
 | `make capture SECS=40 FILTER=PROFILE` | Capture the board's USB serial log for 40 s, keeping lines that contain FILTER |
 | `make dac-test` | Build and upload the PCM5102A 440 Hz test tone |
 | `make clean` | Remove build outputs |
@@ -70,9 +70,9 @@ ctest --test-dir build -L hardware --output-on-failure      # needs the MPK atta
 ./build/synth_sim [options]
 ./build/synth_render --preset 1 --out build/render.wav
 
-pio run -e esp32s3_rev2                # firmware (default env)
-pio run -e esp32s3_rev2 -t upload      # flash
-pio run -e esp32s3_rev2_profile -t upload
+pio run -e mk4-synth                # firmware (default env)
+pio run -e mk4-synth -t upload      # flash
+pio run -e mk4-synth-profile -t upload
 pio run -e diag_dac_test -t upload
 ~/.local/pipx/venvs/platformio/bin/python tools/serial_capture.py 40
 ```
@@ -175,7 +175,7 @@ make flash                   # back to the normal firmware when done
 - Capture with PlatformIO's Python (it has pyserial and the required DTR handling): `~/.local/pipx/venvs/platformio/bin/python tools/serial_capture.py 40 -f PROFILE`.
 - Do not use `pio device monitor` (needs an interactive terminal), `cat /dev/cu.usbmodem*` (USB CDC needs DTR) or `timeout` (not on macOS).
 - Add new probes as `PROFILE_*` macros in `src/profiling.h`, not by editing firmware files.
-- Firmware builds must keep `-O3` effective: Arduino adds `-Os` last, so `esp32s3_rev2` unflags it. Check with `pio run -t compiledb` if speed regresses.
+- Firmware builds must keep `-O3` effective: Arduino adds `-Os` last, so `mk4-synth` unflags it. Check with `pio run -t compiledb` if speed regresses.
 - Voices are split between Core 1 (audio task and `loop()`) and a worker on Core 0 (`Core0VoiceWorker` in `src/esp32s3_driver.h`) when 3 or more are sounding.
 - `tools/patch_ble_midi.py` patches BLE-MIDI 2.2 for arduino-esp32 3.x on every build; do not edit `.pio/libdeps` by hand.
 
@@ -205,7 +205,7 @@ Other files in `tools/`: `patch_ble_midi.py` (PlatformIO pre-build script), `man
 | `tools/` | Python and C++ helper tools (see above) |
 | `diagnostics/` | Standalone bring-up sketches for each hardware part |
 | `docs/` | `adr/` (architecture decision records), DSP fidelity review, MK4 MIDI reference and generated manual, wiring diagram, OLED animation prototype (`oled_midi_toys.html`) |
-| `platformio.ini` | Firmware environments: `esp32s3_rev2`, `esp32s3_rev2_profile`, `diag_dac_test` |
+| `platformio.ini` | Firmware environments: `mk4-synth`, `mk4-synth-profile`, `diag_dac_test` |
 | `CMakeLists.txt` | Desktop build, tests and tools |
 | `.github/` | CI workflow (see below), issue and pull request templates |
 | `AGENTS.md`, `CLAUDE.md` | Rules, commands and invariants for coding agents |
@@ -218,7 +218,7 @@ Other files in `tools/`: `patch_ble_midi.py` (PlatformIO pre-build script), `man
 GitHub Actions (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull requests:
 
 - `desktop-tests` (macOS): installs `portaudio` and `rtmidi`, configures and builds with CMake, checks that `synth_sim` and `mpk_display` were built, then runs `ctest -LE hardware`.
-- `firmware` (Ubuntu): installs PlatformIO and builds `esp32s3_rev2` and `esp32s3_rev2_profile`.
+- `firmware` (Ubuntu): installs PlatformIO and builds `mk4-synth` and `mk4-synth-profile`.
 
 ## Contributing
 

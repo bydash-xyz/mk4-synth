@@ -183,4 +183,4 @@ Host (Apple Silicon, `-O2`), 8 voices with vibrato: about 0.8–1.0% of real tim
 | CS-80 (SVF) | 23.7 → 17.7 | 20.6 → 15.4 |
 | DX E.Piano (FM) | 13.9 → 11.6 | 12.7 → 10.5 |
 
-This shows direction only; it is not a prediction of ESP32-S3 speed (Xtensa GCC, no out-of-order core, 16 FP registers, flash cache). Measure on the board with the `esp32s3_rev2_profile` build. Its `[BENCH]` line now reports `voiceblk` (block path) next to `voice` (the 1-sample wrapper, now slower per call, so it is no longer the engine's cost).
+This shows direction only; it is not a prediction of ESP32-S3 speed (Xtensa GCC, no out-of-order core, 16 FP registers, flash cache). Measure on the board with the `mk4-synth-profile` build. Its `[BENCH]` line now reports `voiceblk` (block path) next to `voice` (the 1-sample wrapper, now slower per call, so it is no longer the engine's cost).

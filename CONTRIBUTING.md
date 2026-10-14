@@ -76,7 +76,7 @@ A good way to start:
 3. Attach a profiling capture so we can see whether the audio budget holds.
 
 Ports should keep the existing pin assignments as the default and add a new PlatformIO
-environment rather than changing `esp32s3_rev2`.
+environment rather than changing `mk4-synth`.
 
 **Other controllers.** The MK4's screen, knob labels and preset slots are driven over its own
 SysEx protocol, which is specific to that model. Other class-compliant MIDI keyboards may play
@@ -102,7 +102,7 @@ Before opening a PR:
 
 - [ ] the description starts with your own human-written summary (see above)
 - [ ] `make test` passes and the desktop build has no new warnings
-- [ ] `pio run -e esp32s3_rev2` builds
+- [ ] `pio run -e mk4-synth` builds
 - [ ] if you changed `Presets.h` or knob mappings, the manual is regenerated (`make manual`)
 - [ ] if you changed the patch format, the change follows
       [ADR-0006](docs/adr/0006-parameter-list-patch-format.md): new parameter IDs only, never

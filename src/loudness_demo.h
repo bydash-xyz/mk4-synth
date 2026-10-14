@@ -1,6 +1,6 @@
 #pragma once
 
-// Loudness check (esp32s3_rev2_loudness only): after boot, plays the PresetLoudnessTest phrase from
+// Loudness check (mk4-synth-loudness only): after boot, plays the PresetLoudnessTest phrase from
 // CMakeLists.txt (chords then a single-note line, velocity 110) on every factory preset in turn, with
 // 3 s of silence between presets. Record the DAC output and compare with synth_render's figures.
 

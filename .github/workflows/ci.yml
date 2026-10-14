@@ -60,8 +60,8 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
-      - name: Build esp32s3_rev2
-        run: pio run -e esp32s3_rev2
+      - name: Build mk4-synth
+        run: pio run -e mk4-synth
 
-      - name: Build esp32s3_rev2_profile
-        run: pio run -e esp32s3_rev2_profile
+      - name: Build mk4-synth-profile
+        run: pio run -e mk4-synth-profile

@@ -9,7 +9,7 @@ that.
 
 - **Never flash the board on your own.** `pio run -t upload`, `make flash`, `make profile` and
   `make dac-test` write to the ESP32-S3. Only run them when the user asks in so many words.
-  Building (`pio run -e esp32s3_rev2`) is always fine.
+  Building (`pio run -e mk4-synth`) is always fine.
 - **Never commit Akai material.** No firmware images (`*.bin`, `firmware/`), Studio Instrument
   Collection files (`*.big`, plugin binaries), disassembly output, or text and images copied from
   Akai software or manuals. They are git-ignored; keep it that way. Protocol facts learned by
@@ -35,8 +35,8 @@ ctest --test-dir build -L hardware                   # needs a real MK4 on USB; 
 ./build/synth_render --preset all --check            # every factory preset renders cleanly
 ./build/synth_render --preset 3 --out build/p3.wav   # listen to a change
 make manual                                          # regenerate docs/mpk_mini_mk4_manual.html
-pio run -e esp32s3_rev2                              # firmware (primary target)
-pio run -e esp32s3_rev2_profile                      # firmware with timing probes
+pio run -e mk4-synth                              # firmware (primary target)
+pio run -e mk4-synth-profile                      # firmware with timing probes
 pip install -r tools/requirements.txt                # Python tools; python3 tools/synthctl.py --help
 ```
 
@@ -46,7 +46,7 @@ debugging.
 ## How to verify a change
 
 1. The desktop build has no new warnings and `ctest -LE hardware` passes.
-2. `pio run -e esp32s3_rev2` and `pio run -e esp32s3_rev2_profile` build.
+2. `pio run -e mk4-synth` and `pio run -e mk4-synth-profile` build.
 3. If you touched `Presets.h` or knob mappings: `make manual` and commit the regenerated manual
    (`ManualSyncTest` fails otherwise). `PresetLoudnessTest` must still pass; don't loosen its
    limits to make a preset fit.
@@ -69,7 +69,7 @@ These were learned the hard way; code must keep them:
   allocation on the audio path.
 - **No per-event logging in the USB host task.** A blocking `Serial` print per MIDI event makes
   the MK4 drop events, which shows up as stuck notes. Log only rare events (enumeration, SysEx).
-- **Keep `-O3` effective.** Arduino appends `-Os`; `esp32s3_rev2` unflags it in `platformio.ini`.
+- **Keep `-O3` effective.** Arduino appends `-Os`; `mk4-synth` unflags it in `platformio.ini`.
   Check with `pio run -t compiledb` if speed regresses.
 - **Patch format (ADR-0006):** dumps are parameter lists. Readers skip unknown IDs and default
   missing ones; never reuse or renumber an ID. Factory slots are read-only; only user slots
@@ -86,10 +86,10 @@ Profiling is compiled in only when `SYNTH_PROFILE` is defined (`src/profiling.h`
 user asks you to flash:
 
 ```bash
-pio run -e esp32s3_rev2_profile -t upload
+pio run -e mk4-synth-profile -t upload
 # Start the capture first, then play. PlatformIO's Python has pyserial and handles DTR.
 ~/.local/pipx/venvs/platformio/bin/python tools/serial_capture.py 40 -f PROFILE
-pio run -e esp32s3_rev2 -t upload                    # back to the normal firmware
+pio run -e mk4-synth -t upload                    # back to the normal firmware
 ```
 
 - `over_budget=N/344` counts blocks that exceeded the audio budget.
