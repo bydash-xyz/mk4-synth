@@ -2,6 +2,10 @@
 
 A standalone polyphonic ESP32-S3 synthesizer for the Akai MPK Mini MK4.
 
+<a href="https://youtu.be/DOOhp2qsM2w"><img src="docs/video-thumbnail.jpg" width="640" alt="mk4-synth in a case next to an Akai MPK Mini MK4 and an MPC Sample; click to watch the video on YouTube"></a>
+
+**See it in action:** [I Connected My MPK Mini to an MPC Using a DIY Synth](https://youtu.be/DOOhp2qsM2w) (YouTube).
+
 It runs on an ESP32-S3 and on the desktop. The same C++ `SynthEngine` provides the factory sounds, modelled on classic instruments (in the style of the Juno-60, Minimoog, Prophet-5, TB-303, CS-80, OB-Xa and Casio PT-10, plus 2-operator FM keyboards, PPG-style wavetable, CZ-style phase distortion, Karplus-Strong plucked strings and a drawbar organ) and user patch slots. On hardware it is played from an Akai MPK Mini MK4 plugged into the ESP32-S3's USB host port, shows its state on a small OLED, and outputs audio through a PCM5102A I2S DAC. Wireless patch editing uses BLE SysEx. On the desktop, `synth_sim` plays the same engine through PortAudio, and `synth_render` renders presets offline to WAV.
 
 Install the firmware from the browser at [bydash.xyz/mk4-synth](https://bydash.xyz/mk4-synth/), and play the OLED screen animations there before you build anything: [bydash.xyz/mk4-synth/animations](https://bydash.xyz/mk4-synth/animations/).
