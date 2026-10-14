@@ -21,6 +21,15 @@ The synth's OLED shows one of 11 animations that react to what you play; press *
 | <img src="docs/animations/plinko.gif" width="256" alt="Plinko animation"><br>**Plinko**: Every note drops a ball; a full bin rings DING | <img src="docs/animations/type.gif" width="256" alt="Typewriter animation"><br>**Typewriter**: Each key swings its own hammer; the marks trace your melody | <img src="docs/animations/knit.gif" width="256" alt="Knit animation"><br>**Knit**: Knits what you play into a sweater pattern |
 | <img src="docs/animations/wash.gif" width="256" alt="Laundromat animation"><br>**Laundromat**: Low, middle and high keys load three washing machines | <img src="docs/animations/seismo.gif" width="256" alt="Seismograph animation"><br>**Seismograph**: Hits are quakes, held notes are tremors | |
 
+## On the MK4's screen
+
+The synth also drives the MPK Mini MK4's colour screen: each preset gets its own colour theme with its name, slot and engine, and turning a knob shows the parameter, its value and a bar. These are screenshots read back from a real MK4 (`./build/mpk_display --screenshots` captures every preset):
+
+| | | | |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/mk4-screens/juno60-home.png" width="200" alt="MK4 screen: Juno-60 home screen"> | <img src="docs/mk4-screens/minimoog-cutoff.png" width="200" alt="MK4 screen: Minimoog, turning Filter Cutoff"> | <img src="docs/mk4-screens/tb303-home.png" width="200" alt="MK4 screen: TB-303 home screen"> | <img src="docs/mk4-screens/dx-epiano-mod-depth.png" width="200" alt="MK4 screen: DX e-piano, turning Mod Depth"> |
+| <img src="docs/mk4-screens/ppg-wave-home.png" width="200" alt="MK4 screen: PPG Wave home screen"> | <img src="docs/mk4-screens/cz-bass-dcw.png" width="200" alt="MK4 screen: CZ Bass, turning DCW Amount"> | <img src="docs/mk4-screens/ks-guitar-decay.png" width="200" alt="MK4 screen: KS Guitar, turning String Decay"> | <img src="docs/mk4-screens/b3-jazz-drawbar.png" width="200" alt="MK4 screen: B3 Jazz, turning a drawbar"> |
+
 ## Presets
 
 Preset layout (32 slots, see [CONTEXT.md](CONTEXT.md) for the full list and domain terms). Instrument names describe the sound each preset aims for; mk4-synth isn't affiliated with their makers (see [Disclaimer](#disclaimer)):
@@ -226,7 +235,7 @@ make flash                   # back to the normal firmware when done
 | `gen-font` | `gen_oled_font.py` | Generate the MK4 OLED glyph table header (`MpkOledFont.h`) |
 | `gen-manual` | `generate_manual.py` | Generate or verify the MPK Mini MK4 HTML manual; `--pdf` also prints a US Letter PDF to `build/` with headless Chrome |
 
-Other files in `tools/`: `patch_ble_midi.py` (PlatformIO pre-build script), `manual_generator.cpp` and `mpk_display.cpp` (C++ helpers built by CMake), `_deps.py` (shared dependency check).
+Other files in `tools/`: `patch_ble_midi.py` (PlatformIO pre-build script), `manual_generator.cpp` and `mpk_display.cpp` (C++ helpers built by CMake; `mpk_display --help` lists its modes, including `--screenshots`, which saves the MK4's screen for every preset with the MK4 connected to the computer), `_deps.py` (shared dependency check).
 
 ## Repo map
 

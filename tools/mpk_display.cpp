@@ -12,6 +12,7 @@
  */
 
 #include "MpkMiniMk4Display.h"
+#include "MpkMiniMk4ControlSurface.h"
 #include "SynthEngine.h"
 #include <algorithm>
 #include <iostream>
@@ -23,6 +24,10 @@
 #include <chrono>
 #include <atomic>
 #include <csignal>
+#include <cstdio>
+#include <deque>
+#include <fstream>
+#include <mutex>
 #include <rtmidi/RtMidi.h>
 
 std::atomic<bool> g_running{true};
@@ -378,6 +383,8 @@ void printUsage(const char* prog) {
               << "  --clear                    Clear all lines on the OLED display\n"
               << "  --monitor, -m              Run live CC monitor and update OLED display on knob turns\n"
               << "  --demo-screens [NAME]      Show every synth theme: home screen + knob sweep (value text + bar)\n"
+              << "  --screenshots [DIR]        Drive the screen like the firmware and save each preset's home screen\n"
+              << "                             and a knob HUD as 160x80 PPM files (default DIR: build/mk4-screens)\n"
               << "  --help, -h                 Display this help message\n\n"
               << "Examples:\n"
               << "  " << prog << " --sync\n"
@@ -478,6 +485,109 @@ int main(int argc, char* argv[]) {
                 }
             }
             drv.endTransientHud();
+            return 0;
+        } else if (arg1 == "--screenshots") {
+            // Drives the MK4 through ControlSurface exactly as the ESP32 firmware does, then reads the screen back
+            // with SysEx 0x72 (three 0x71 chunks of byte-swapped RGB565) after each step.
+            const std::string dir = argc > 2 ? argv[2] : "build/mk4-screens";
+            RtMidiIn plugIn;
+            RtMidiOut plugOut, swOut;
+            const int inIdx = findPort(plugIn, "Plugin Port"), outIdx = findPort(plugOut, "Plugin Port");
+            const int swIdx = findPort(swOut, "Software Control");
+            if (inIdx < 0 || outIdx < 0) {
+                std::cerr << "[Error] MPK mini IV Plugin Port not found; connect the MK4 to this computer.\n";
+                return 1;
+            }
+            plugIn.openPort(inIdx);
+            plugOut.openPort(outIdx);
+            if (swIdx >= 0) swOut.openPort(swIdx);
+            plugIn.ignoreTypes(false, false, false);
+
+            std::mutex mu;
+            std::deque<std::vector<unsigned char>> inbox;
+            plugIn.setCallback([](double, std::vector<unsigned char>* msg, void* user) {
+                auto* ctx = static_cast<std::pair<std::mutex*, std::deque<std::vector<unsigned char>>*>*>(user);
+                std::lock_guard<std::mutex> lock(*ctx->first);
+                ctx->second->push_back(*msg);
+            }, new std::pair<std::mutex*, std::deque<std::vector<unsigned char>>*>(&mu, &inbox));
+
+            Synth::SynthEngine engine;
+            engine.init(44100.0f);
+            MpkMiniMk4::ControlSurface surface;
+            surface.init(engine);
+            surface.setScreenTakeoverEnabled(false);  // as the firmware: keep the MK4's native screen modes
+            surface.setPluginPortSender([&](const uint8_t* d, size_t n) { plugOut.sendMessage(d, n); });
+            if (swIdx >= 0) surface.setSoftwareControlPortSender([&](const uint8_t* d, size_t n) { swOut.sendMessage(d, n); });
+
+            uint16_t fb[80][160] = {};
+            int rows = 0;
+            // Feeds device SysEx (heartbeats etc.) to the surface and collects framebuffer chunks
+            auto pump = [&]() {
+                std::deque<std::vector<unsigned char>> msgs;
+                { std::lock_guard<std::mutex> lock(mu); msgs.swap(inbox); }
+                for (const auto& m : msgs) {
+                    if (m.size() >= 16 && m[0] == 0xF0 && m[1] == 0x47 && (m[4] == 0x71 || m[4] == 0x72)) {
+                        const unsigned char* p = m.data() + 7;
+                        const int y0 = (p[2] << 7) | p[3], h = (p[6] << 7) | p[7];
+                        const unsigned char* px = p + 8;
+                        const size_t n = std::min<size_t>((m.size() - 16) / 3, static_cast<size_t>(160 * h));
+                        for (size_t i = 0; i < n; ++i) {
+                            uint16_t v = static_cast<uint16_t>((px[3 * i] << 11) | (px[3 * i + 1] << 5) | px[3 * i + 2]);
+                            v = static_cast<uint16_t>((v << 8) | (v >> 8));  // stored in panel byte order
+                            const int y = y0 + static_cast<int>(i / 160);
+                            if (y < 80) fb[y][i % 160] = v;
+                        }
+                        rows += h;
+                    } else if (!m.empty() && m[0] == 0xF0) {
+                        surface.processSysEx(m.data(), m.size());
+                    }
+                }
+            };
+            auto settle = [&](int ms) {
+                for (int t = 0; t < ms; t += 20) {
+                    pump();
+                    surface.tick();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                }
+            };
+            auto shoot = [&](const std::string& name) {
+                rows = 0;
+                const std::vector<unsigned char> req = {0xF0, 0x47, 0x00, 0x5D, 0x72, 0x00, 0x00, 0xF7};
+                plugOut.sendMessage(&req);
+                for (int t = 0; t < 3000 && rows < 80; t += 10) {
+                    pump();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+                if (rows < 80) { std::cerr << "[Error] screen readback incomplete for " << name << "\n"; return false; }
+                std::ofstream f(dir + "/" + name + ".ppm", std::ios::binary);
+                f << "P6 160 80 255\n";
+                for (int y = 0; y < 80; ++y)
+                    for (int x = 0; x < 160; ++x) {
+                        const uint16_t v = fb[y][x];
+                        const unsigned char rgb[3] = {static_cast<unsigned char>((v >> 11) * 255 / 31),
+                                                      static_cast<unsigned char>(((v >> 5) & 0x3F) * 255 / 63),
+                                                      static_cast<unsigned char>((v & 0x1F) * 255 / 31)};
+                        f.write(reinterpret_cast<const char*>(rgb), 3);
+                    }
+                std::cout << "  " << dir << "/" << name << ".ppm\n";
+                return true;
+            };
+
+            std::system(("mkdir -p '" + dir + "'").c_str());
+            const auto& presets = Synth::getPresets();
+            for (size_t i = 0; i < Synth::FACTORY_PRESET_COUNT; ++i) {
+                char base[64];
+                std::snprintf(base, sizeof(base), "%02zu", i + 1);
+                std::cout << "[" << base << " " << presets[i].name << "]\n";
+                surface.selectPreset(static_cast<uint8_t>(i));
+                settle(700);
+                if (!shoot(std::string(base) + "-home")) return 1;
+                surface.processMidiMessage(0xB0, 24, 96);  // K1, as the MK4 sends it
+                settle(150);
+                if (!shoot(std::string(base) + "-knob")) return 1;
+                settle(1600);                              // let the knob HUD time out before the next preset
+            }
+            surface.getDisplayDriver().endTransientHud();
             return 0;
         } else if (arg1 == "--demo-synth") {
             Synth::SynthEngine engine;
