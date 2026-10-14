@@ -250,6 +250,31 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on pushes to `main` and on pull
 - `desktop-tests` (macOS): installs `portaudio` and `rtmidi`, configures and builds with CMake, checks that `synth_sim` and `mpk_display` were built, then runs `ctest -LE hardware`.
 - `firmware` (Ubuntu): installs PlatformIO and builds `mk4-synth` and `mk4-synth-profile`.
 
+## Acknowledgements
+
+mk4-synth stands on a lot of other people's work.
+
+**DSP techniques**
+- Andrew Simper (Cytomic): the trapezoidal state-variable filter ("Linear Trapezoidal Integrated SVF").
+- Vadim Zavalishin: *The Art of VA Filter Design*, for the zero-delay-feedback transistor ladder (chapter 5).
+- Vesa Välimäki and colleagues: PolyBLEP band-limited oscillators.
+- Kevin Karplus and Alex Strong, and David Jaffe and Julius O. Smith: the Karplus-Strong plucked string and its extensions.
+- ITU-R BS.1770: the loudness measure used to level the presets.
+- Robin Schmidt's Open303, a reference for the TB-303 work still to come.
+
+**The instruments** whose sound the presets aim for: the Roland Juno-60 and TB-303, Moog Minimoog, Sequential Prophet-5, Yamaha CS-80 and DX7, Oberheim OB-Xa, Casio PT-10 and CZ series, PPG Wave and the Hammond organ.
+
+**Libraries and tools**
+- [Arduino core for ESP32](https://github.com/espressif/arduino-esp32) and [ESP-IDF](https://github.com/espressif/esp-idf) (Espressif), built with [PlatformIO](https://platformio.org/) and [pioarduino](https://github.com/pioarduino/platform-espressif32).
+- [U8g2](https://github.com/olikraus/u8g2) (Oliver Kraus) for the OLED.
+- [BLE-MIDI](https://github.com/lathoub/Arduino-BLE-MIDI) (lathoub) and the [Arduino MIDI Library](https://github.com/FortySevenEffects/arduino_midi_library) (Francois Best, FortySevenEffects).
+- [PortAudio](https://www.portaudio.com/) and [RtMidi](https://github.com/thestk/rtmidi) (Gary Scavone) for the desktop simulator.
+- [ESP Web Tools](https://github.com/esphome/esp-web-tools) (ESPHome) and [esptool](https://github.com/espressif/esptool) for flashing.
+- The [Arimo](https://github.com/googlefonts/Arimo) font (Google) for the MK4 screen digits.
+- Teenage Engineering's OP-1 and Pocket Operator screens, which inspired the OLED animations.
+
+Licenses of everything in the prebuilt firmware are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Contributing
 
 Bug reports, sound fixes, new presets and reports from builds on other hardware are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: every issue and pull request needs a summary written by a person.
