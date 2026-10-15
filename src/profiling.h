@@ -14,6 +14,7 @@
 #include <Arduino.h>
 #include <esp_timer.h>
 #include <cstdio>
+#include <atomic>
 #include "SynthEngine.h"
 
 namespace Profile {
@@ -23,6 +24,11 @@ constexpr uint32_t AUDIO_REPORT_BLOCKS = 344;
 constexpr uint32_t OLED_REPORT_FRAMES = 20;
 
 inline char g_bench[1400];
+inline std::atomic<uint32_t> g_i2sErrors{0};
+
+inline void recordI2sError() {
+    g_i2sErrors.fetch_add(1, std::memory_order_relaxed);
+}
 
 // Renders each configuration for 100 blocks on a private engine and records the mean us/block
 // (single core, no voice worker), then times the DSP primitives in isolation.
@@ -108,9 +114,11 @@ inline void audioBlock(int64_t us, const Synth::SynthEngine* engine) {
     if (us > AUDIO_BUDGET_US) over++;
     sum += us;
     if (++count >= AUDIO_REPORT_BLOCKS) {
+        const uint32_t i2sErr = g_i2sErrors.exchange(0, std::memory_order_relaxed);
         Serial.print(g_bench);
-        Serial.printf("[PROFILE] audio avg=%lldus max=%lldus over_budget=%u/%u active_voices=%u\n",
+        Serial.printf("[PROFILE] audio avg=%lldus max=%lldus over_budget=%u/%u i2s_err=%u active_voices=%u\n",
                       sum / AUDIO_REPORT_BLOCKS, max, over, AUDIO_REPORT_BLOCKS,
+                      i2sErr,
                       engine ? static_cast<unsigned>(engine->getActiveVoiceCount()) : 0u);
         sum = max = 0;
         count = over = 0;
@@ -145,14 +153,20 @@ inline void oledFrame(int64_t startUs, const char* animName) {
 #define PROFILE_BOOT_BENCH()      Profile::runBootBench()
 #define PROFILE_AUDIO_BEGIN()     const int64_t profileAudioT0_ = esp_timer_get_time()
 #define PROFILE_AUDIO_END(engine) Profile::audioBlock(esp_timer_get_time() - profileAudioT0_, (engine))
+#define PROFILE_I2S_ERROR()       Profile::recordI2sError()
 #define PROFILE_OLED_BEGIN()      const int64_t profileOledT0_ = esp_timer_get_time()
 #define PROFILE_OLED_END(name)    Profile::oledFrame(profileOledT0_, (name))
 
 #else
 
+namespace Profile {
+inline void recordI2sError() {}
+}
+
 #define PROFILE_BOOT_BENCH()      ((void)0)
 #define PROFILE_AUDIO_BEGIN()     ((void)0)
 #define PROFILE_AUDIO_END(engine) ((void)0)
+#define PROFILE_I2S_ERROR()       ((void)0)
 #define PROFILE_OLED_BEGIN()      ((void)0)
 #define PROFILE_OLED_END(name)    ((void)0)
 

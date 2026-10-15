@@ -74,6 +74,36 @@ int main() {
     assert(engine.getActiveVoiceCount() == 0);
     std::cout << "  Passed (All voices released cleanly)" << std::endl;
 
+    // Test 5: I2S write error counting (write failures and short writes)
+    std::cout << "Test 5: I2S write error counting..." << std::endl;
+    assert(HardwareDriver::getI2sWriteErrorCount() == 0);
+
+    // Normal render should not increment error count
+    HardwareDriver::renderAudioBlock();
+    assert(HardwareDriver::getI2sWriteErrorCount() == 0);
+
+    // 5a: Inject write failure (writeErr != ESP_OK)
+    MockI2SStd::writeError = ESP_FAIL;
+    HardwareDriver::renderAudioBlock();
+    assert(HardwareDriver::getI2sWriteErrorCount() == 1);
+
+    // 5b: Inject short write (bytesWritten != sizeof(s_i2sSlotBuffer))
+    MockI2SStd::writeError = ESP_OK;
+    MockI2SStd::writeBytesOverrideActive = true;
+    MockI2SStd::writeBytesWrittenOverride = 100;
+    HardwareDriver::renderAudioBlock();
+    assert(HardwareDriver::getI2sWriteErrorCount() == 2);
+
+    // 5c: Reset error count
+    HardwareDriver::resetI2sWriteErrorCount();
+    assert(HardwareDriver::getI2sWriteErrorCount() == 0);
+
+    // 5d: Resuming normal writes keeps count at 0
+    MockI2SStd::writeBytesOverrideActive = false;
+    HardwareDriver::renderAudioBlock();
+    assert(HardwareDriver::getI2sWriteErrorCount() == 0);
+    std::cout << "  Passed (Error counter increments on DMA errors and short writes, resets correctly)" << std::endl;
+
     std::cout << "\nAll ESP32-S3 Rev 2.0 Driver host tests passed successfully!\n" << std::endl;
     return 0;
 }

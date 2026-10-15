@@ -121,11 +121,17 @@ struct MockI2S {
     static inline i2s_pin_config_t lastPins{};
     static inline uint32_t configuredSampleRate = 0;
     static inline std::vector<int16_t> capturedAudio;
+    static inline esp_err_t writeError = ESP_OK;
+    static inline size_t writeBytesWrittenOverride = 0;
+    static inline bool writeBytesOverrideActive = false;
 
     static void reset() {
         installed = false;
         configuredSampleRate = 0;
         capturedAudio.clear();
+        writeError = ESP_OK;
+        writeBytesWrittenOverride = 0;
+        writeBytesOverrideActive = false;
     }
 };
 
@@ -146,6 +152,14 @@ inline esp_err_t i2s_set_clk(i2s_port_t port, uint32_t rate, i2s_bits_per_sample
 }
 
 inline esp_err_t i2s_write(i2s_port_t port, const void* src, size_t size, size_t* bytes_written, uint32_t ticks_to_wait) {
+    if (MockI2S::writeError != ESP_OK) {
+        if (bytes_written) *bytes_written = 0;
+        return MockI2S::writeError;
+    }
+    if (MockI2S::writeBytesOverrideActive) {
+        if (bytes_written) *bytes_written = MockI2S::writeBytesWrittenOverride;
+        return ESP_OK;
+    }
     const int16_t* samples = static_cast<const int16_t*>(src);
     size_t count = size / sizeof(int16_t);
     MockI2S::capturedAudio.insert(MockI2S::capturedAudio.end(), samples, samples + count);
