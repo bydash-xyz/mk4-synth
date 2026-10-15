@@ -666,7 +666,7 @@ inline const std::array<Preset, static_cast<size_t>(SynthModel::Count)>& getPres
         // 12. Warm Rhodes (Slot #13)
         {
             .model = SynthModel::FM_WarmRhodes,
-            .name = "WARM RHODES",
+            .name = "RHODES",
             .description = "Vintage FM Suitcase Electric Piano with Stereo Pan Tremolo",
             .waveform = Waveform::Triangle,
             .subOscLevel = 0.0f,

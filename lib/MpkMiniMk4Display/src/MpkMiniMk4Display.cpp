@@ -887,7 +887,7 @@ Theme DisplayDriver::themeForPresetName(const std::string& presetName, bool isBa
         {{"PPG", "WAVE"},                0x34E0FF, 21, "Wavetable"},
         {{"CZ "},                        0xFF4FD8, 57, "Phase dist"},
         {{"KS ", "GUITAR", "KOTO"},      0xD9B26F, 61, "Plucked string"},
-        {{"B3 "},                        0xB5482B, 15, "Tonewheel organ"},
+        {{"B3 "},                        0xB5482B, 15, "Drawbar organ"},
         {{"ORGAN"},                      0xC8643C, 3,  "FM organ"},
         {{"PIANO"},                      0xFF6FB0, 53, "Lo-fi keys"},
         {{"FANTASY", "FNTSY"},           0x9C8CFF, 45, "Lo-fi keys"},

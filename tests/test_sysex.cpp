@@ -343,7 +343,7 @@ int main() {
             {10, "PT-10 FLUTE", Synth::SynthModel::CasioPT10_Flute,   Synth::EngineMode::Subtractive},
             {11, "DX E-PIANO",  Synth::SynthModel::DX_EPiano,         Synth::EngineMode::FM},
             {12, "FM TINES",    Synth::SynthModel::FM_CrystalTines,   Synth::EngineMode::FM},
-            {13, "WARM RHODES", Synth::SynthModel::FM_WarmRhodes,     Synth::EngineMode::FM},
+            {13, "RHODES",      Synth::SynthModel::FM_WarmRhodes,     Synth::EngineMode::FM},
             {14, "FM CLAVINET", Synth::SynthModel::FM_Clavinet,       Synth::EngineMode::FM},
             {15, "FM ORGAN",    Synth::SynthModel::FM_DrawbarOrgan,   Synth::EngineMode::FM},
             {16, "PPG WAVE",    Synth::SynthModel::PPG_Wave,          Synth::EngineMode::Wavetable},
