@@ -904,7 +904,7 @@ void test_theme_lookup() {
     assert(std::string(DisplayDriver::themeForPresetName("PPG WAVE").family) == "Wavetable");
     assert(std::string(DisplayDriver::themeForPresetName("CZ RESO").family) == "Phase dist");
     assert(std::string(DisplayDriver::themeForPresetName("KS KOTO").family) == "Plucked string");
-    assert(std::string(DisplayDriver::themeForPresetName("B3 GOSPEL").family) == "Tonewheel organ");
+    assert(std::string(DisplayDriver::themeForPresetName("B3 GOSPEL").family) == "Drawbar organ");
     // Bank B inverts the banner instead of shifting the hue
     auto junoB = DisplayDriver::themeForPresetName("JUNO-60", true);
     assert(junoB.accent == juno.accent && junoB.headerFg == juno.accent && junoB.headerBg.luma() < juno.accent.luma());

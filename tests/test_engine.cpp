@@ -405,7 +405,7 @@ int main() {
 
         // 6. Preset 12: Warm Rhodes (Slot 13)
         engine.loadPreset(Synth::SynthModel::FM_WarmRhodes);
-        assert(std::strcmp(engine.getCurrentPreset().name, "WARM RHODES") == 0);
+        assert(std::strcmp(engine.getCurrentPreset().name, "RHODES") == 0);
         assert(engine.getTremoloDepth() > 0.30f);
 
         // 7. Preset 13: FM Clavinet (Slot 14)

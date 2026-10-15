@@ -459,7 +459,7 @@ int main(int argc, char* argv[]) {
             drv.setScreenTakeoverEnabled(false);
             std::vector<std::string> names = {"JUNO-60", "MINIMOOG", "PROPHET-5", "TB-303 ACID", "CS-80 BLADE",
                                               "OB-XA BRASS", "PT-10 PIANO", "PT-10 FNTSY", "PT-10 VIOLN",
-                                              "PT-10 FLUTE", "DX E-PIANO", "FM TINES", "WARM RHODES",
+                                              "PT-10 FLUTE", "DX E-PIANO", "FM TINES", "RHODES",
                                               "FM CLAVINET", "FM ORGAN"};
             if (argc > 2) names = {argv[2]};
             const auto count = static_cast<unsigned>(Synth::SynthModel::Count);
