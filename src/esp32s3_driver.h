@@ -49,8 +49,8 @@ inline bool s_i2sInstalled = false;
 #if defined(ARDUINO_ARCH_ESP32)
 // -------------------------------------------------------------
 // Second render core: with 3+ sounding voices the engine hands half of them to this task on Core 0.
-// Core 0 only runs the USB host / BLE stacks, while Core 1 hosts the audio task plus Arduino's loop()
-// (UI, OLED, polling). Keeps chords well inside the 2.9 ms block budget and leaves Core 1 time for loop().
+// Core 0 otherwise runs the USB host / BLE stacks and the low-priority OLED render task, while Core 1
+// hosts the audio task plus Arduino's loop() (MIDI/BLE polling, LEDs). Keeps chords well inside the 2.9 ms block budget and leaves Core 1 time for loop().
 // -------------------------------------------------------------
 class Core0VoiceWorker : public Synth::VoiceWorker {
 public:

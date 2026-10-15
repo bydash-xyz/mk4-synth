@@ -140,7 +140,7 @@ inline void oledFrame(int64_t startUs, const char* animName) {
     sumRender += render;
     if (render > maxRender) maxRender = render;
     if (++frames >= OLED_REPORT_FRAMES) {
-        Serial.printf("[PROFILE] oled [%s] (loop on core %d) render avg=%lldms max=%lldms | frame period avg=%lldms max=%lldms\n",
+        Serial.printf("[PROFILE] oled [%s] (task on core %d) render avg=%lldms max=%lldms | frame period avg=%lldms max=%lldms\n",
                       animName, xPortGetCoreID(), sumRender / (1000 * OLED_REPORT_FRAMES), maxRender / 1000,
                       sumPeriod / (1000 * (OLED_REPORT_FRAMES - 1)), maxPeriod / 1000);
         sumRender = maxRender = sumPeriod = maxPeriod = 0;

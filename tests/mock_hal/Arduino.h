@@ -44,8 +44,12 @@ using TaskFunction_t = void (*)(void*);
 using BaseType_t = long;
 using TickType_t = uint32_t;
 
+uint32_t millis();
 inline TickType_t pdMS_TO_TICKS(uint32_t ms) { return ms; }
 inline void vTaskDelay(TickType_t ticks) {}
+inline TickType_t xTaskGetTickCount() { return millis(); }
+inline void vTaskDelayUntil(TickType_t* pxPreviousWakeTime, TickType_t xTimeIncrement) {}
+inline BaseType_t xTaskDelayUntil(TickType_t* pxPreviousWakeTime, TickType_t xTimeIncrement) { return pdTRUE; }
 
 struct MockFreeRTOS {
     static inline TaskFunction_t lastTaskFunction = nullptr;

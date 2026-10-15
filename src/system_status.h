@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 
 #if defined(ARDUINO_ARCH_ESP32)
 #include <Arduino.h>
@@ -14,8 +15,8 @@ namespace HardwareDriver {
 // System faults shown on the SSD1306 (serial is usually not attached).
 //
 // Enum order is display priority: the first set fatal fault owns the full-screen fault page, the first set
-// warning owns the header tag. Everything here runs in Arduino loop() only (setup, watchers and the OLED
-// render share that task), so the mask needs no locking and nothing touches the audio task.
+// warning owns the header tag. Fault state is synchronized with a mutex so watchers, setup,
+// and the OLED task can safely update and inspect faults without race conditions.
 // =========================================================================
 enum class SystemFault : uint8_t {
     AudioDac = 0,        // fatal: I2S channel for the PCM5102A could not be created / enabled
@@ -70,36 +71,35 @@ public:
 
     // Raise a fault; logs to Serial and starts the warning banner only on the clear -> set transition
     void set(SystemFault f, uint32_t nowMs) {
-        const uint16_t b = faultBit(f);
-        if (mask_ & b) return;
-        mask_ |= b;
-        ++logCount_;
-        if (!info(f).fatal) {
-            bannerFault_ = f;
-            bannerSinceMs_ = nowMs;
-            bannerActive_ = true;
-        }
-#if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
-        Serial.printf("[Fault] %s\n", info(f).log);
-#endif
+        std::lock_guard<std::mutex> lock(mutex_);
+        setLocked(f, nowMs);
     }
 
     void clear(SystemFault f) {
-        const uint16_t b = faultBit(f);
-        if (!(mask_ & b)) return;
-        mask_ &= static_cast<uint16_t>(~b);
-        ++logCount_;
-        if (bannerActive_ && bannerFault_ == f) bannerActive_ = false;
-#if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
-        Serial.printf("[Fault cleared] %s\n", info(f).log);
-#endif
+        std::lock_guard<std::mutex> lock(mutex_);
+        clearLocked(f);
     }
 
-    bool has(SystemFault f) const { return (mask_ & faultBit(f)) != 0; }
-    uint16_t mask() const { return mask_; }
-    bool hasFatal() const { return (mask_ & FATAL_MASK) != 0; }
-    uint16_t fatalMask() const { return mask_ & FATAL_MASK; }
-    uint16_t warningMask() const { return mask_ & static_cast<uint16_t>(~FATAL_MASK); }
+    bool has(SystemFault f) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return (mask_ & faultBit(f)) != 0;
+    }
+    uint16_t mask() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return mask_;
+    }
+    bool hasFatal() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return (mask_ & FATAL_MASK) != 0;
+    }
+    uint16_t fatalMask() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return mask_ & FATAL_MASK;
+    }
+    uint16_t warningMask() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return mask_ & static_cast<uint16_t>(~FATAL_MASK);
+    }
 
     // Highest-priority set fault among `m` (m must be non-zero)
     static SystemFault first(uint16_t m) {
@@ -115,6 +115,7 @@ public:
 
     // Warning banner still on screen? (shown for BANNER_DURATION_MS after a warning is raised)
     bool bannerFault(uint32_t nowMs, SystemFault& out) {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (!bannerActive_) return false;
         if (nowMs - bannerSinceMs_ >= BANNER_DURATION_MS) {
             bannerActive_ = false;
@@ -125,11 +126,15 @@ public:
     }
 
     // MK4 not seen on USB since boot: the OLED shows the "Connect MPK Mini MK4" page instead of the idle UI
-    bool isWaitingForMpk() const { return linkStarted_ && !mpkEverConnected_; }
+    bool isWaitingForMpk() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return linkStarted_ && !mpkEverConnected_;
+    }
 
-    // MK4 link watcher, called from loop(). `mpkSysExCount` counts inbound Akai SysEx (keybed-state replies to
+    // MK4 link watcher, called periodically. `mpkSysExCount` counts inbound Akai SysEx (keybed-state replies to
     // the 300 ms poll, heartbeat pings); if it stops moving while enumerated the Plugin Port is offline.
     void updateMpkLink(uint32_t nowMs, bool usbConnected, uint32_t mpkSysExCount) {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (!linkStarted_) {
             linkStarted_ = true;
             bootMs_ = nowMs;
@@ -140,30 +145,60 @@ public:
                 mpkEverConnected_ = true;
                 lastReplyMs_ = nowMs;
                 lastSysExCount_ = mpkSysExCount;
-                clear(SystemFault::MpkMissing);
+                clearLocked(SystemFault::MpkMissing);
             }
             if (mpkSysExCount != lastSysExCount_) {
                 lastSysExCount_ = mpkSysExCount;
                 lastReplyMs_ = nowMs;
             }
             if (nowMs - lastReplyMs_ >= PLUGIN_PORT_TIMEOUT_MS) {
-                set(SystemFault::PluginPortOffline, nowMs);
+                setLocked(SystemFault::PluginPortOffline, nowMs);
             } else {
-                clear(SystemFault::PluginPortOffline);
+                clearLocked(SystemFault::PluginPortOffline);
             }
         } else {
             mpkConnected_ = false;
-            clear(SystemFault::PluginPortOffline);
+            clearLocked(SystemFault::PluginPortOffline);
             if (mpkEverConnected_ || nowMs - bootMs_ >= MPK_ENUM_TIMEOUT_MS) {
-                set(SystemFault::MpkMissing, nowMs);
+                setLocked(SystemFault::MpkMissing, nowMs);
             }
         }
     }
 
     // Number of Serial fault lines emitted (host tests check each transition logs once)
-    uint32_t getLogCount() const { return logCount_; }
+    uint32_t getLogCount() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return logCount_;
+    }
 
 private:
+    void setLocked(SystemFault f, uint32_t nowMs) {
+        const uint16_t b = faultBit(f);
+        if (mask_ & b) return;
+        mask_ |= b;
+        ++logCount_;
+        if (!info(f).fatal) {
+            bannerFault_ = f;
+            bannerSinceMs_ = nowMs;
+            bannerActive_ = true;
+        }
+#if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
+        Serial.printf("[Fault] %s\n", info(f).log);
+#endif
+    }
+
+    void clearLocked(SystemFault f) {
+        const uint16_t b = faultBit(f);
+        if (!(mask_ & b)) return;
+        mask_ &= static_cast<uint16_t>(~b);
+        ++logCount_;
+        if (bannerActive_ && bannerFault_ == f) bannerActive_ = false;
+#if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
+        Serial.printf("[Fault cleared] %s\n", info(f).log);
+#endif
+    }
+
+    mutable std::mutex mutex_;
     uint16_t mask_{0};
     uint32_t logCount_{0};
 
