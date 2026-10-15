@@ -106,6 +106,9 @@ struct MockI2SStd {
     static inline i2s_std_gpio_config_t lastPins = {};
     static inline std::vector<int32_t> capturedAudio32; // Captured 32-bit slot stereo frames
     static inline std::vector<int16_t> capturedAudio16; // Captured 16-bit slot stereo frames
+    static inline esp_err_t writeError = ESP_OK;
+    static inline size_t writeBytesWrittenOverride = 0;
+    static inline bool writeBytesOverrideActive = false;
 
     static void reset() {
         installed = false;
@@ -115,6 +118,9 @@ struct MockI2SStd {
         lastPins = {};
         capturedAudio32.clear();
         capturedAudio16.clear();
+        writeError = ESP_OK;
+        writeBytesWrittenOverride = 0;
+        writeBytesOverrideActive = false;
     }
 };
 
@@ -149,7 +155,15 @@ inline esp_err_t i2s_del_channel(i2s_chan_handle_t handle) {
 }
 
 inline esp_err_t i2s_channel_write(i2s_chan_handle_t handle, const void *src, size_t size, size_t *bytes_written, uint32_t ticks_to_wait) {
+    if (MockI2SStd::writeError != ESP_OK) {
+        if (bytes_written) *bytes_written = 0;
+        return MockI2SStd::writeError;
+    }
     if (!src || size == 0) return ESP_FAIL;
+    if (MockI2SStd::writeBytesOverrideActive) {
+        if (bytes_written) *bytes_written = MockI2SStd::writeBytesWrittenOverride;
+        return ESP_OK;
+    }
     if (bytes_written) *bytes_written = size;
 
     if (MockI2SStd::configuredBitWidth == I2S_DATA_BIT_WIDTH_32BIT) {

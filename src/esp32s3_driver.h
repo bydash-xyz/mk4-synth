@@ -3,6 +3,7 @@
 #if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
 
 #include <Arduino.h>
+#include <atomic>
 
 #if defined(MOCK_HAL) || __has_include(<driver/i2s_std.h>)
 #include <driver/i2s_std.h>
@@ -33,6 +34,7 @@ inline Synth::SynthEngine* s_synthPtr = nullptr;
 inline int16_t s_rawBuffer[DMA_BLOCK_FRAMES * 2];       // Interleaved stereo 16-bit [L, R, L, R, ...]
 inline int32_t s_i2sSlotBuffer[DMA_BLOCK_FRAMES * 2];   // 32-bit slot stereo for PCM5102A DAC
 inline TaskHandle_t s_audioTaskHandle = nullptr;
+inline std::atomic<uint32_t> s_i2sWriteErrors{0};
 
 // Why initHardware() failed (main.cpp maps it to a SystemFault for the OLED fault page)
 enum class AudioInitError : uint8_t { None, I2s, AudioTask };
@@ -110,7 +112,10 @@ inline void renderAudioBlock() {
             &bytesWritten,
             portMAX_DELAY
         );
-        (void)writeErr;
+        if (writeErr != ESP_OK || bytesWritten != sizeof(s_i2sSlotBuffer)) {
+            s_i2sWriteErrors.fetch_add(1, std::memory_order_relaxed);
+            PROFILE_I2S_ERROR();
+        }
     } else {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -130,7 +135,10 @@ inline void renderAudioBlock() {
             &bytesWritten,
             portMAX_DELAY
         );
-        (void)writeErr;
+        if (writeErr != ESP_OK || bytesWritten != sizeof(s_i2sSlotBuffer)) {
+            s_i2sWriteErrors.fetch_add(1, std::memory_order_relaxed);
+            PROFILE_I2S_ERROR();
+        }
     } else {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -232,6 +240,14 @@ static bool setupI2S() {
 // -------------------------------------------------------------
 // Public Driver API
 // -------------------------------------------------------------
+inline uint32_t getI2sWriteErrorCount() {
+    return s_i2sWriteErrors.load(std::memory_order_relaxed);
+}
+
+inline void resetI2sWriteErrorCount() {
+    s_i2sWriteErrors.store(0, std::memory_order_relaxed);
+}
+
 inline bool initHardware(Synth::SynthEngine& engine) {
     s_synthPtr = &engine;
     engine.init(SAMPLE_RATE);
@@ -241,6 +257,7 @@ inline bool initHardware(Synth::SynthEngine& engine) {
     engine.setDeferredEvents(true);
 
     s_audioInitError = AudioInitError::None;
+    resetI2sWriteErrorCount();
 
     // Initialize modern I2S master transmitter
     if (!setupI2S()) {
