@@ -63,25 +63,17 @@ public:
         std::memset(hudKnobName_, 0, sizeof(hudKnobName_));
     }
 
-    ~OledDisplayUI() {
-#if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
-        delete u8g2_;
-        u8g2_ = nullptr;
-#endif
-    }
+    ~OledDisplayUI() = default;
 
     bool init() {
 #if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
         Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN, 400000); // 400kHz Fast I2C
-        delete u8g2_;
-        u8g2_ = new U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
-        if (!u8g2_) return false;
-        u8g2_->begin();
-        u8g2_->clearBuffer();
-        u8g2_->setFont(u8g2_font_6x10_tf);
-        u8g2_->drawStr(10, 25, "ESP32-S3 SYNTH");
-        u8g2_->drawStr(10, 45, "Rev 2.0 Ready");
-        u8g2_->sendBuffer();
+        u8g2_.begin();
+        u8g2_.clearBuffer();
+        u8g2_.setFont(u8g2_font_6x10_tf);
+        u8g2_.drawStr(10, 25, "ESP32-S3 SYNTH");
+        u8g2_.drawStr(10, 45, "Rev 2.0 Ready");
+        u8g2_.sendBuffer();
         lastFrameMicros_ = micros();
 #endif
         needsRedraw_ = true;
@@ -183,22 +175,15 @@ public:
         }
 
 #if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
-        if (!u8g2_) {
-            if (animRegistry_ && animRegistry_->getActive()) {
-                animRegistry_->getActive()->update(dtSeconds, animCtx);
-            }
-            needsRedraw_ = false;
-            return;
-        }
         const uint16_t faults = status_ ? status_->mask() : 0;
         if (faults & SystemStatus::FATAL_MASK) {
             // Static page: redraw and resend only when the set of fatal faults changes
             const uint16_t fatal = faults & SystemStatus::FATAL_MASK;
             if (fatal != lastFatalDrawn_) {
                 lastFatalDrawn_ = fatal;
-                u8g2_->clearBuffer();
-                renderFaultPage(*u8g2_, fatal);
-                u8g2_->sendBuffer();
+                u8g2_.clearBuffer();
+                renderFaultPage(u8g2_, fatal);
+                u8g2_.sendBuffer();
             }
             needsRedraw_ = false;
             return;
@@ -206,45 +191,45 @@ public:
         lastFatalDrawn_ = 0;
         const bool waitingForMpk = status_ && status_->isWaitingForMpk();
 
-        u8g2_->clearBuffer();
+        u8g2_.clearBuffer();
 
         // =================================================================
         // YELLOW ZONE (y 0–15): Compact Stats Header
         // =================================================================
-        renderStatsHeader(*u8g2_, engine);
+        renderStatsHeader(u8g2_, engine);
         if (faults) {
-            renderWarningTag(*u8g2_, faults);
+            renderWarningTag(u8g2_, faults);
         }
 
         // Separator: dashed line at y=15 (bottom of yellow zone)
         for (int x = 0; x < 128; x += 4) {
-            u8g2_->drawPixel(x, 15);
-            u8g2_->drawPixel(x + 1, 15);
+            u8g2_.drawPixel(x, 15);
+            u8g2_.drawPixel(x + 1, 15);
         }
 
         // =================================================================
         // BLUE ZONE (y 16–62): Animation or Knob HUD Overlay
         // =================================================================
         if (waitingForMpk) {
-            renderWaitingForMpk(*u8g2_, (faults & faultBit(SystemFault::MpkMissing)) != 0);
+            renderWaitingForMpk(u8g2_, (faults & faultBit(SystemFault::MpkMissing)) != 0);
         } else if (showHud) {
-            renderKnobHud(*u8g2_, engine);
+            renderKnobHud(u8g2_, engine);
         } else if (animRegistry_ && animRegistry_->getActive()) {
             // Update & render the active animation
             IAnimation* anim = animRegistry_->getActive();
             anim->update(dtSeconds, animCtx);
-            anim->render(*u8g2_, animCtx);
+            anim->render(u8g2_, animCtx);
         }
 
         SystemFault bannerFault = SystemFault::Count;
         if (faults && !waitingForMpk && status_->bannerFault(now, bannerFault)) {
-            renderWarningBanner(*u8g2_, SystemStatus::info(bannerFault).banner);
+            renderWarningBanner(u8g2_, SystemStatus::info(bannerFault).banner);
         } else if (!waitingForMpk && !showHud && animBannerMillis_ != 0
                    && now - animBannerMillis_ < ANIM_NAME_BANNER_MS) {
-            renderWarningBanner(*u8g2_, animRegistry_->getActiveName());
+            renderWarningBanner(u8g2_, animRegistry_->getActiveName());
         }
 
-        u8g2_->sendBuffer();
+        u8g2_.sendBuffer();
 #else
         if (animRegistry_ && animRegistry_->getActive()) {
             animRegistry_->getActive()->update(dtSeconds, animCtx);
@@ -264,12 +249,13 @@ public:
     uint8_t getLastRenderedVoices() const { return lastRenderedVoices_; }
     float getLastRenderedVol() const { return lastRenderedVol_; }
 #if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
-    U8G2* getDisplay() const { return u8g2_; }
+    U8G2* getDisplay() { return &u8g2_; }
+    const U8G2* getDisplay() const { return &u8g2_; }
 #endif
 
 private:
 #if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
-    U8G2_SSD1306_128X64_NONAME_F_HW_I2C* u8g2_{nullptr};
+    U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2_{U8G2_R0, U8X8_PIN_NONE};
 
     // =====================================================================
     // Stats Header: fits in yellow zone (y 0–14, 15px tall)
