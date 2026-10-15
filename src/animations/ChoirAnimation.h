@@ -40,7 +40,9 @@ public:
         const int n = tracker_.update(ctx, hits);
         for (int k = 0; k < n; ++k) {
             Singer& s = singers_[hits[k]];
-            s.vy = -(HOP_BASE + HOP_VEL * ctx.lastVelocity / 127.0f);
+            if (s.hop >= -2.0f) {
+                s.vy = -(HOP_BASE + HOP_VEL * ctx.lastVelocity / 127.0f);
+            }
             s.surprise = 0.2f;
             if (noteCount_ < MAX_NOTES) {
                 notes_[noteCount_++] = {static_cast<float>(slotX(hits[k]) + 4), 60.0f - 14.0f - s.stretch,
@@ -62,6 +64,7 @@ public:
             s.arms += ((env > 0.55f ? 1.0f : 0.0f) - s.arms) * std::fmin(1.0f, dt * 10.0f);
             s.hop += s.vy * dt;
             s.vy += GRAVITY * dt;
+            s.hop = std::fmax(s.hop, -MAX_HOP);
             if (s.hop > 0.0f) { s.hop = 0.0f; s.vy = 0.0f; }
             s.surprise = std::fmax(0.0f, s.surprise - dt);
             s.blink -= dt;
@@ -173,6 +176,7 @@ public:
 
     static constexpr int MAX_NOTES = 12;
     static constexpr float SLEEP_AFTER = 6.0f; // s of silence before the choir dozes off
+    static constexpr float MAX_HOP = 26.0f;
 
 private:
     static constexpr int VOICES = 8;

@@ -41,6 +41,30 @@ void test_choir() {
         assert(minLoud < minSoft - 1.0f);
     }
 
+    // Fast arpeggio on voice 0 (e.g. 1-voice preset): rapid strikes must not launch singer off screen
+    {
+        ChoirAnimation arp;
+        arp.init(); prime(arp);
+        ToyVoices arpTv;
+        U8G2 arpd;
+        arpd.begin();
+        constexpr float MAX_HOP = ChoirAnimation::MAX_HOP;
+
+        for (int strike = 0; strike < 50; ++strike) { // 50 strikes every 50 ms = 2.5 s
+            arpTv.noteOn(60, 127);
+            run(arp, arpTv, 0.025f, 0.025f);
+            arpTv.noteOff(60);
+            run(arp, arpTv, 0.025f, 0.025f);
+            assert(arp.getHop(0) >= -MAX_HOP);
+            assert(arp.getHop(0) <= 0.0f);
+            arpd.clearBuffer();
+            arp.render(arpd, arpTv.ctx);
+            assert(blueZoneOnly(arpd));
+        }
+        // Voice 0 singer is still visible on screen in the blue zone
+        assert(litPixels(arpd, 0, 16, 127, 61) > 0);
+    }
+
     U8G2 d;
     d.begin();
     anim.render(d, tv.ctx);
