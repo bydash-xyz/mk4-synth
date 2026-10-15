@@ -6,6 +6,7 @@
 #include <string>
 #include <algorithm>
 #include <atomic>
+#include <mutex>
 #include "SynthEngine.h"
 #include "Presets.h"
 #include "knob_page.h"
@@ -93,10 +94,12 @@ public:
 
     // Semitone shift applied by the MPK to keybed notes (see AnimationContext::keybedNoteOffset)
     void setKeybedNoteOffset(int semitones) {
+        std::lock_guard<std::mutex> lock(stateMutex_);
         keybedNoteOffset_ = static_cast<int16_t>(semitones);
     }
 
     void setPreset(uint8_t index, const char* name) {
+        std::lock_guard<std::mutex> lock(stateMutex_);
         activePresetIndex_ = index;
         std::memset(presetName_, 0, sizeof(presetName_));
         if (name) {
@@ -106,11 +109,13 @@ public:
     }
 
     void setPage(KnobPage page) {
+        std::lock_guard<std::mutex> lock(stateMutex_);
         currentPage_ = page;
         needsRedraw_ = true;
     }
 
     void notifyKnobTouched(const char* paramName, uint8_t value, const char* valueText = nullptr) {
+        std::lock_guard<std::mutex> lock(stateMutex_);
         std::memset(hudKnobName_, 0, sizeof(hudKnobName_));
         if (paramName) {
             std::strncpy(hudKnobName_, paramName, 15);
@@ -140,8 +145,21 @@ public:
                 const AnimationContext& animCtx) {
         uint32_t now = millis();
         applyPendingAnimationStep(now);
-        bool showHud = (now - lastKnobTouchMillis_ < HUD_DISPLAY_DURATION_MS)
-                       && (hudKnobName_[0] != '\0');
+
+        UiStateSnapshot snap;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex_);
+            snap.activePresetIndex = activePresetIndex_;
+            std::memcpy(snap.presetName, presetName_, sizeof(snap.presetName));
+            snap.currentPage = currentPage_;
+            std::memcpy(snap.hudKnobName, hudKnobName_, sizeof(snap.hudKnobName));
+            snap.hudKnobValue = hudKnobValue_;
+            std::memcpy(snap.hudKnobText, hudKnobText_, sizeof(snap.hudKnobText));
+            snap.lastKnobTouchMillis = lastKnobTouchMillis_;
+        }
+
+        bool showHud = (now - snap.lastKnobTouchMillis < HUD_DISPLAY_DURATION_MS)
+                       && (snap.hudKnobName[0] != '\0');
 
         uint8_t activeVoices = static_cast<uint8_t>(engine.getActiveVoiceCount());
 
@@ -157,10 +175,9 @@ public:
         lastFrameMicros_ = nowUs;
 #endif
 
-        lastRenderedPreset_ = activePresetIndex_;
+        lastRenderedPreset_ = snap.activePresetIndex;
         lastRenderedVoices_ = activeVoices;
         lastRenderedVol_ = masterVolume;
-
         // Detect note-on and beat transitions in AnimationContext and notify active animation
         if (animRegistry_ && animRegistry_->getActive()) {
             IAnimation* anim = animRegistry_->getActive();
@@ -196,7 +213,7 @@ public:
         // =================================================================
         // YELLOW ZONE (y 0–15): Compact Stats Header
         // =================================================================
-        renderStatsHeader(u8g2_, engine);
+        renderStatsHeader(u8g2_, engine, snap);
         if (faults) {
             renderWarningTag(u8g2_, faults);
         }
@@ -213,7 +230,7 @@ public:
         if (waitingForMpk) {
             renderWaitingForMpk(u8g2_, (faults & faultBit(SystemFault::MpkMissing)) != 0);
         } else if (showHud) {
-            renderKnobHud(u8g2_, engine);
+            renderKnobHud(u8g2_, engine, snap);
         } else if (animRegistry_ && animRegistry_->getActive()) {
             // Update & render the active animation
             IAnimation* anim = animRegistry_->getActive();
@@ -244,8 +261,14 @@ public:
         render(engine, masterVolume, ctx);
     }
 
-    uint8_t getActivePreset() const { return activePresetIndex_; }
-    const char* getPresetName() const { return presetName_; }
+    uint8_t getActivePreset() const {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        return activePresetIndex_;
+    }
+    const char* getPresetName() const {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        return presetName_;
+    }
     uint8_t getLastRenderedVoices() const { return lastRenderedVoices_; }
     float getLastRenderedVol() const { return lastRenderedVol_; }
 #if defined(ARDUINO_ARCH_ESP32) || defined(MOCK_HAL)
@@ -262,14 +285,23 @@ private:
     // Layout: "P1 Juno-60" on left, "120 4/4 ST" on right (no voice count, so the metronome fits).
     // Output mode instead of volume: master volume is on K16, and a mono left-only output is easy to forget.
     // =====================================================================
-    void renderStatsHeader(U8G2& u8g2, const Synth::SynthEngine& engine) {
+    struct UiStateSnapshot {
+        uint8_t  activePresetIndex{0};
+        char     presetName[17]{};
+        KnobPage currentPage{KnobPage::BANK_A};
+        char     hudKnobName[16]{};
+        uint8_t  hudKnobValue{0};
+        char     hudKnobText[12]{};
+        uint32_t lastKnobTouchMillis{0};
+    };
+
+    void renderStatsHeader(U8G2& u8g2, const Synth::SynthEngine& engine, const UiStateSnapshot& snap) {
         // Left side: Preset slot + name (bold font)
         u8g2.setFont(u8g2_font_6x10_tf);
         char presetBuf[20];
         std::snprintf(presetBuf, sizeof(presetBuf), "P%d %.9s",
-                      activePresetIndex_ + 1, presetName_);
+                      snap.activePresetIndex + 1, snap.presetName);
         u8g2.drawStr(0, 10, presetBuf);
-
         // Right side: compact stats (small font)
         u8g2.setFont(u8g2_font_5x7_tf);
 
@@ -364,37 +396,37 @@ private:
     // Knob HUD Overlay: temporarily replaces animation zone (y 16–48)
     // Shows parameter name, value bar, and numeric value
     // =====================================================================
-    void renderKnobHud(U8G2& u8g2, const Synth::SynthEngine& engine) {
+    void renderKnobHud(U8G2& u8g2, const Synth::SynthEngine& engine, const UiStateSnapshot& snap) {
         u8g2.setFont(u8g2_font_6x10_tf);
 
         // Parameter name
-        u8g2.drawStr(4, 30, hudKnobName_);
+        u8g2.drawStr(4, 30, snap.hudKnobName);
 
         // Value bar
         u8g2.drawFrame(4, 35, 120, 8);
-        int barWidth = (hudKnobValue_ * 116) / 127;
+        int barWidth = (snap.hudKnobValue * 116) / 127;
         if (barWidth > 0) {
             u8g2.drawBox(6, 37, barWidth, 4);
         }
 
         // Numeric value or tone name
         char valStr[16];
-        if (hudKnobText_[0]) {
-            u8g2.drawStr(124 - u8g2.getStrWidth(hudKnobText_), 30, hudKnobText_);
-        } else if (std::strcmp(hudKnobName_, "Tone") == 0) {
+        if (snap.hudKnobText[0]) {
+            u8g2.drawStr(124 - u8g2.getStrWidth(snap.hudKnobText), 30, snap.hudKnobText);
+        } else if (std::strcmp(snap.hudKnobName, "Tone") == 0) {
             std::snprintf(valStr, sizeof(valStr), "%s", engine.getCasioToneName());
             u8g2.drawStr(70, 30, valStr);
         } else {
-            std::snprintf(valStr, sizeof(valStr), "%d", hudKnobValue_);
+            std::snprintf(valStr, sizeof(valStr), "%d", snap.hudKnobValue);
             u8g2.drawStr(100, 30, valStr);
         }
 
         // Page indicator at bottom of HUD zone
         u8g2.setFont(u8g2_font_5x7_tf);
         const char* pageStr = "[BANK A]";
-        if (currentPage_ == KnobPage::BANK_B) {
+        if (snap.currentPage == KnobPage::BANK_B) {
             pageStr = "[BANK B]";
-        } else if (currentPage_ == KnobPage::RHYTHM) {
+        } else if (snap.currentPage == KnobPage::RHYTHM) {
             pageStr = "[RHYTHM]";
         }
         u8g2.drawStr(2, ANIM_REGION_BOTTOM, pageStr);
@@ -413,7 +445,10 @@ private:
         if (step == 0 || !animRegistry_) return;
         for (; step > 0; --step) animRegistry_->next();
         for (; step < 0; ++step) animRegistry_->prev();
-        hudKnobName_[0] = '\0';  // drop the knob HUD so the new animation shows right away
+        {
+            std::lock_guard<std::mutex> lock(stateMutex_);
+            hudKnobName_[0] = '\0';  // drop the knob HUD so the new animation shows right away
+        }
         animBannerMillis_ = now ? now : 1;
         needsRedraw_ = true;
     }
@@ -434,7 +469,10 @@ private:
         ctx.lastVelocity = engine.getLastVelocity();
         ctx.lastNoteOnMillis = engine.getLastNoteOnMillis();
         ctx.masterVolume = masterVolume;
-        ctx.keybedNoteOffset = keybedNoteOffset_;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex_);
+            ctx.keybedNoteOffset = keybedNoteOffset_;
+        }
         ctx.nowMillis = millis();
 
         // Populate per-voice snapshot
@@ -443,6 +481,7 @@ private:
         return ctx;
     }
 
+    mutable std::mutex stateMutex_;
     int16_t keybedNoteOffset_{0};
     uint8_t activePresetIndex_;
     char presetName_[17];

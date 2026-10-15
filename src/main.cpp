@@ -78,6 +78,27 @@ static void saveDeviceSettingsIfChanged() {
     Serial.printf("[Settings] Output: %s\n", mono ? "MONO (left)" : "STEREO");
 }
 
+#if defined(ARDUINO_ARCH_ESP32)
+static TaskHandle_t s_oledTaskHandle = nullptr;
+
+static void oledTask(void* arg) {
+    TickType_t lastWakeTime = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(OLED_FRAME_INTERVAL_MS);
+    while (true) {
+        vTaskDelayUntil(&lastWakeTime, period);
+        uint32_t now = millis();
+        // Fault watchers (cheap flag reads; the OLED shows whatever they set)
+        g_status.updateMpkLink(now, g_usbMidi.isDeviceConnected(), g_usbMidi.getMpkSysExCount());
+        if (!g_bleMidi.isNvsOk()) g_status.set(HardwareDriver::SystemFault::Nvs, now);
+        g_oledUi.setKeybedNoteOffset(g_usbMidi.getKeybedNoteOffset());
+        saveDeviceSettingsIfChanged();
+        PROFILE_OLED_BEGIN();
+        g_oledUi.render(g_synthEngine, g_synthEngine.getMasterVolume());
+        PROFILE_OLED_END(g_animRegistry.getActiveName());
+    }
+}
+#endif
+
 void setup() {
     setCpuFrequencyMhz(240); // Lock ESP32-S3 Xtensa dual cores to full 240 MHz
     Serial.begin(115200);
@@ -152,6 +173,21 @@ void setup() {
     });
     g_usbMidi.selectPreset(0);
 
+#if defined(ARDUINO_ARCH_ESP32)
+    // 6. Dedicated OLED rendering task on Core 0 (priority 1 / tskIDLE_PRIORITY + 1)
+    // Moves the ~25 ms I2C frame transmission off Arduino loop() so BLE SysEx
+    // patch management and USB polling run without latency spikes or dropped packets.
+    xTaskCreatePinnedToCore(
+        oledTask,
+        "OledRenderTask",
+        4096,
+        nullptr,
+        1,
+        &s_oledTaskHandle,
+        0
+    );
+#endif
+
     Serial.println(">>> System Initialized (Rev 2.0 Ready, MPK Mini MK4 USB Host) <<<");
 }
 
@@ -165,6 +201,7 @@ void loop() {
     uint32_t now = millis();
     g_metroLed.update(g_synthEngine, now);
     g_tapLed.update(g_synthEngine, g_usbMidi, now);
+#if !defined(ARDUINO_ARCH_ESP32)
     if (now - g_lastOledFrameMillis >= OLED_FRAME_INTERVAL_MS) {
         g_lastOledFrameMillis = now;
         // Fault watchers (cheap flag reads; the OLED shows whatever they set)
@@ -176,6 +213,7 @@ void loop() {
         g_oledUi.render(g_synthEngine, g_synthEngine.getMasterVolume());
         PROFILE_OLED_END(g_animRegistry.getActiveName());
     }
+#endif
 
     static uint32_t lastHeartbeat = 0;
     if (now - lastHeartbeat >= 1000) {
