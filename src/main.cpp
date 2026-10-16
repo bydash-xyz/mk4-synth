@@ -4,10 +4,9 @@
 #include "MidiParser.h"
 #include "Presets.h"
 
-// =========================================================================
-// ESP32-S3 Rev 2.0 (Akai MPK Mini MK4 Native USB Host, BLE SysEx, OLED, PCM5102A)
-// =========================================================================
 #include "esp32s3_driver.h"
+#include "version.h"
+
 #include "knob_page.h"
 #include "oled_ui.h"
 #include "system_status.h"
@@ -105,7 +104,8 @@ void setup() {
     delay(200);
 
     Serial.println("==================================================");
-    Serial.println("  ESP32-S3 Polyphonic Synthesizer — Rev 2.0      ");
+    Serial.print  ("  MK4-SYNTH — ");
+    Serial.println(MK4_SYNTH_VERSION);
     Serial.println("  Hardware Controller: Akai MPK Mini MK4         ");
     Serial.println("==================================================");
     Serial.printf("[System] CPU: %u MHz | Main Loop Core: %d\n", getCpuFrequencyMhz(), xPortGetCoreID());
@@ -188,7 +188,9 @@ void setup() {
     );
 #endif
 
-    Serial.println(">>> System Initialized (Rev 2.0 Ready, MPK Mini MK4 USB Host) <<<");
+    Serial.print(">>> System Initialized (MK4-SYNTH ");
+    Serial.print(MK4_SYNTH_VERSION);
+    Serial.println(", MPK Mini MK4 USB Host) <<<");
 }
 
 void loop() {

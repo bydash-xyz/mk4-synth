@@ -13,6 +13,7 @@
 #include "system_status.h"
 #include "animations/IAnimation.h"
 #include "animations/AnimationRegistry.h"
+#include "version.h"
 
 #if defined(ARDUINO_ARCH_ESP32)
 #include <Arduino.h>
@@ -72,8 +73,14 @@ public:
         u8g2_.begin();
         u8g2_.clearBuffer();
         u8g2_.setFont(u8g2_font_6x10_tf);
-        u8g2_.drawStr(10, 25, "ESP32-S3 SYNTH");
-        u8g2_.drawStr(10, 45, "Rev 2.0 Ready");
+        u8g2_.drawStr(10, 25, "MK4-SYNTH");
+        char verStr[32];
+        std::snprintf(verStr, sizeof(verStr), "%s Ready", MK4_SYNTH_VERSION);
+        if (std::strlen(verStr) * 6 + 10 <= 128) {
+            u8g2_.drawStr(10, 45, verStr);
+        } else {
+            u8g2_.drawStr(10, 45, MK4_SYNTH_VERSION);
+        }
         u8g2_.sendBuffer();
         lastFrameMicros_ = micros();
 #endif
