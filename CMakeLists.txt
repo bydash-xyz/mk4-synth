@@ -5,6 +5,17 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+execute_process(
+    COMMAND git describe --tags --always --dirty
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE GIT_RES
+)
+if(GIT_RES EQUAL 0 AND NOT "${GIT_VERSION}" STREQUAL "")
+    add_compile_definitions(MK4_SYNTH_VERSION="${GIT_VERSION}")
+endif()
+
 # Support macOS Homebrew search paths (both Apple Silicon /opt/homebrew and Intel /usr/local)
 list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew" "/usr/local")
 

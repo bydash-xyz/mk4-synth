@@ -16,6 +16,7 @@
 #include "SynthEngine.h"
 #include "MidiParser.h"
 #include "profiling.h"
+#include "version.h"
 
 namespace HardwareDriver {
 
@@ -292,7 +293,9 @@ inline bool initHardware(Synth::SynthEngine& engine) {
     }
 
     Serial.println("[Task] Real-time audio rendering task pinned to Core 1");
-    Serial.println(">>> ESP32-S3 Rev 2.0 Polyphonic Synth Ready! <<<");
+    Serial.print(">>> MK4-SYNTH ");
+    Serial.print(MK4_SYNTH_VERSION);
+    Serial.println(" Ready! <<<");
     return true;
 }
 
