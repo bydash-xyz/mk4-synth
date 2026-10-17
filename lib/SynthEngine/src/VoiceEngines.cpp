@@ -702,4 +702,792 @@ void Opx4Engine::renderBlockAdd(float* acc, int n) {
     }
 }
 
+StagePianoEngine::StagePianoEngine() {
+    reset();
+}
+
+void StagePianoEngine::init(float sampleRate) {
+    sampleRate_ = sampleRate;
+    reset();
+}
+
+void StagePianoEngine::setSampleRate(float sampleRate) {
+    if (sampleRate > 0.0f) {
+        sampleRate_ = sampleRate;
+        float freqHz = 440.0f * ParameterScaler::fastExp2((static_cast<float>(note_) - 69.0f) * (1.0f / 12.0f));
+        updateTuning(freqHz, velocityNorm_);
+    }
+}
+
+void StagePianoEngine::reset() {
+    delayLine_.fill(0.0f);
+    writePos_ = 0;
+    thiranX1_ = 0.0f;
+    thiranY1_ = 0.0f;
+    dispX1_ = 0.0f;
+    dispY1_ = 0.0f;
+    dampPrev_ = 0.0f;
+    active_ = false;
+    releaseGain_ = 1.0f;
+    hammerPos_ = 0;
+    hammerLen_ = 0;
+    updateTuning(440.0f, 1.0f);
+}
+
+void StagePianoEngine::updateTuning(float freqHz, float velNorm) {
+    if (freqHz <= 0.0f) freqHz = 440.0f;
+    float T0 = sampleRate_ / freqHz;
+    float w0 = TWO_PI_F * freqHz / sampleRate_;
+
+    dispC_ = -0.015f;
+    float phiDisp = -w0 + 2.0f * std::atan2(dispC_ * std::sin(w0), 1.0f + dispC_ * std::cos(w0));
+    float dDisp = -phiDisp / w0;
+
+    dampD_ = 0.35f - 0.20f * std::clamp(velNorm, 0.0f, 1.0f);
+    float reDamp = (1.0f - dampD_) + dampD_ * std::cos(w0);
+    float imDamp = -dampD_ * std::sin(w0);
+    float phiDamp = std::atan2(imDamp, reDamp);
+    float dDamp = -phiDamp / w0;
+
+    float dRem = T0 - dDisp - dDamp;
+    delayM_ = static_cast<int>(std::floor(dRem - 0.5f));
+    if (delayM_ < 2) delayM_ = 2;
+    if (delayM_ > static_cast<int>(DELAY_BUFFER_SIZE - 4)) delayM_ = static_cast<int>(DELAY_BUFFER_SIZE - 4);
+    float dTh = dRem - static_cast<float>(delayM_);
+
+    float denom = std::sin(w0 * (1.0f + dTh) * 0.5f);
+    if (std::abs(denom) > 1e-9f) {
+        thiranA_ = std::sin(w0 * (1.0f - dTh) * 0.5f) / denom;
+    } else {
+        thiranA_ = (1.0f - dTh) / (1.0f + dTh);
+    }
+}
+
+void StagePianoEngine::noteOn(uint8_t noteNumber, uint8_t velocity) {
+    note_ = noteNumber;
+    velocityNorm_ = std::clamp(static_cast<float>(velocity) / 127.0f, 0.01f, 1.0f);
+    float freqHz = 440.0f * ParameterScaler::fastExp2((static_cast<float>(noteNumber) - 69.0f) * (1.0f / 12.0f));
+    updateTuning(freqHz, velocityNorm_);
+
+    delayLine_.fill(0.0f);
+    writePos_ = 0;
+    thiranX1_ = 0.0f;
+    thiranY1_ = 0.0f;
+    dispX1_ = 0.0f;
+    dispY1_ = 0.0f;
+    dampPrev_ = 0.0f;
+    releaseGain_ = 1.0f;
+
+    int tauSamples = std::clamp(static_cast<int>(sampleRate_ * (0.0025f - 0.0015f * velocityNorm_)), 4, 120);
+    hammerLen_ = static_cast<size_t>(tauSamples);
+    hammerPos_ = 0;
+    float amp = velocityNorm_ * 0.8f;
+    for (size_t i = 0; i < hammerLen_; ++i) {
+        hammerBuffer_[i] = 0.5f * (1.0f - std::cos(TWO_PI_F * static_cast<float>(i) / static_cast<float>(hammerLen_))) * amp;
+    }
+    active_ = true;
+}
+
+void StagePianoEngine::noteOff() {
+    releaseGain_ = 0.998f;
+    releaseCoef_ = 0.994f;
+}
+
+float StagePianoEngine::processSample() {
+    if (!active_) return 0.0f;
+
+    size_t rdPos = (writePos_ + DELAY_BUFFER_SIZE - static_cast<size_t>(delayM_)) % DELAY_BUFFER_SIZE;
+    float x = delayLine_[rdPos];
+
+    float thY = thiranA_ * x + thiranX1_ - thiranA_ * thiranY1_;
+    thiranX1_ = x;
+    thiranY1_ = thY;
+
+    float dispY = dispC_ * thY + dispX1_ - dispC_ * dispY1_;
+    dispX1_ = thY;
+    dispY1_ = dispY;
+
+    float dampY = (1.0f - dampD_) * dispY + dampD_ * dampPrev_;
+    dampPrev_ = dispY;
+
+    float excite = 0.0f;
+    if (hammerPos_ < hammerLen_) {
+        excite = hammerBuffer_[hammerPos_++];
+    }
+
+    float inp = excite + loopGain_ * dampY;
+    delayLine_[writePos_] = inp;
+    writePos_ = (writePos_ + 1) % DELAY_BUFFER_SIZE;
+
+    float out = dispY * releaseGain_;
+    if (releaseGain_ < 0.999f) {
+        releaseGain_ *= releaseCoef_;
+        if (releaseGain_ < 1e-4f) active_ = false;
+    }
+    return out;
+}
+
+void StagePianoEngine::renderBlock(float* out, int n) {
+    for (int i = 0; i < n; ++i) {
+        out[i] = processSample();
+    }
+}
+
+void StagePianoEngine::renderBlockAdd(float* acc, int n) {
+    for (int i = 0; i < n; ++i) {
+        acc[i] += processSample();
+    }
+}
+
+StageEpEngine::StageEpEngine() {
+    SineLut::init();
+    init(sampleRate_);
+}
+
+void StageEpEngine::init(float sampleRate) {
+    sampleRate_ = sampleRate;
+    ampEnv_.init(sampleRate_);
+    ampEnv_.setAttackMs(1.0f);
+    ampEnv_.setDecayMs(1800.0f);
+    ampEnv_.setSustainLevel(0.4f);
+    ampEnv_.setReleaseMs(200.0f);
+    reset();
+}
+
+void StageEpEngine::setSampleRate(float sampleRate) {
+    if (sampleRate > 0.0f) {
+        sampleRate_ = sampleRate;
+        ampEnv_.setSampleRate(sampleRate_);
+        carrierInc_ = freqHz_ / sampleRate_;
+        modInc_ = (freqHz_ * 14.0f) / sampleRate_;
+    }
+}
+
+void StageEpEngine::reset() {
+    carrierPhase_ = 0.0f;
+    modPhase_ = 0.0f;
+    modEnv_ = 0.0f;
+    phaserPhase_ = 0.0f;
+    tremoloPhase_ = 0.0f;
+    apX1_.fill(0.0f);
+    apY1_.fill(0.0f);
+    ampEnv_.reset();
+}
+
+void StageEpEngine::noteOn(uint8_t noteNumber, uint8_t velocity) {
+    float velNorm = std::clamp(static_cast<float>(velocity) / 127.0f, 0.01f, 1.0f);
+    freqHz_ = 440.0f * ParameterScaler::fastExp2((static_cast<float>(noteNumber) - 69.0f) * (1.0f / 12.0f));
+    carrierInc_ = freqHz_ / sampleRate_;
+    modInc_ = (freqHz_ * 14.0f) / sampleRate_;
+    carrierPhase_ = 0.0f;
+    modPhase_ = 0.0f;
+
+    modEnv_ = 1.0f;
+    modDecayCoef_ = std::exp(-1.0f / (sampleRate_ * 0.04f));
+    fmIndex_ = 0.5f + 3.0f * velNorm;
+    drive_ = 1.0f + 4.5f * (velNorm * velNorm);
+
+    ampEnv_.noteOn();
+}
+
+void StageEpEngine::noteOff() {
+    ampEnv_.noteOff();
+}
+
+void StageEpEngine::processStereo(float& outL, float& outR) {
+    if (!ampEnv_.isActive()) {
+        outL = 0.0f;
+        outR = 0.0f;
+        return;
+    }
+
+    float mod = SineLut::lookupFast(TWO_PI_F * modPhase_) * fmIndex_ * modEnv_;
+    modEnv_ *= modDecayCoef_;
+
+    float car = SineLut::lookupFast(TWO_PI_F * carrierPhase_ + mod);
+
+    carrierPhase_ += carrierInc_;
+    if (carrierPhase_ >= 1.0f) carrierPhase_ -= 1.0f;
+    modPhase_ += modInc_;
+    if (modPhase_ >= 1.0f) modPhase_ -= 1.0f;
+
+    float u = car * drive_;
+    float w = std::tanh(u + 0.35f * u * u);
+
+    float lfo = SineLut::lookupFast(TWO_PI_F * phaserPhase_);
+    phaserPhase_ += phaserRateHz_ / sampleRate_;
+    if (phaserPhase_ >= 1.0f) phaserPhase_ -= 1.0f;
+
+    float apCoeff = 0.4f + 0.3f * lfo;
+    float sig = w;
+    for (int stage = 0; stage < 4; ++stage) {
+        float apOut = apCoeff * sig + apX1_[stage] - apCoeff * apY1_[stage];
+        apX1_[stage] = sig;
+        apY1_[stage] = apOut;
+        sig = apOut;
+    }
+    float phased = 0.65f * w + 0.35f * sig;
+
+    float tremLfo = SineLut::lookupFast(TWO_PI_F * tremoloPhase_);
+    tremoloPhase_ += tremoloRateHz_ / sampleRate_;
+    if (tremoloPhase_ >= 1.0f) tremoloPhase_ -= 1.0f;
+
+    float amp = ampEnv_.process();
+    outL = phased * (1.0f + tremoloDepth_ * tremLfo) * 0.5f * amp;
+    outR = phased * (1.0f - tremoloDepth_ * tremLfo) * 0.5f * amp;
+}
+
+float StageEpEngine::processSample() {
+    float outL = 0.0f, outR = 0.0f;
+    processStereo(outL, outR);
+    return 0.5f * (outL + outR);
+}
+
+void StageEpEngine::renderBlock(float* out, int n) {
+    for (int i = 0; i < n; ++i) {
+        out[i] = processSample();
+    }
+}
+
+void StageEpEngine::renderBlockStereo(float* left, float* right, int n) {
+    for (int i = 0; i < n; ++i) {
+        processStereo(left[i], right[i]);
+    }
+}
+
+void StageEpEngine::renderBlockAdd(float* acc, int n) {
+    for (int i = 0; i < n; ++i) {
+        acc[i] += processSample();
+    }
+}
+
+StudioStringsEngine::StudioStringsEngine() {
+    init(sampleRate_);
+}
+
+void StudioStringsEngine::init(float sampleRate) {
+    sampleRate_ = sampleRate;
+    ampEnv_.init(sampleRate_);
+    ampEnv_.setAttackMs(80.0f);
+    ampEnv_.setDecayMs(400.0f);
+    ampEnv_.setSustainLevel(0.85f);
+    ampEnv_.setReleaseMs(300.0f);
+
+    formant1_.init(sampleRate_);
+    formant1_.setType(FilterType::Bandpass);
+    formant1_.setCutoff(280.0f);
+    formant1_.setResonance(3.5f);
+
+    formant2_.init(sampleRate_);
+    formant2_.setType(FilterType::Bandpass);
+    formant2_.setCutoff(450.0f);
+    formant2_.setResonance(4.0f);
+
+    formant3_.init(sampleRate_);
+    formant3_.setType(FilterType::Bandpass);
+    formant3_.setCutoff(2500.0f);
+    formant3_.setResonance(3.0f);
+
+    reset();
+}
+
+void StudioStringsEngine::setSampleRate(float sampleRate) {
+    if (sampleRate > 0.0f) {
+        sampleRate_ = sampleRate;
+        ampEnv_.setSampleRate(sampleRate_);
+        formant1_.setSampleRate(sampleRate_);
+        formant2_.setSampleRate(sampleRate_);
+        formant3_.setSampleRate(sampleRate_);
+        updateIncs();
+    }
+}
+
+void StudioStringsEngine::reset() {
+    phase1_ = 0.0f;
+    phase2_ = 0.3f;
+    noisePrev_ = 0.0f;
+    ampEnv_.reset();
+    formant1_.reset();
+    formant2_.reset();
+    formant3_.reset();
+    updateIncs();
+}
+
+void StudioStringsEngine::setDetuneCents(float cents) {
+    detuneCents_ = cents;
+    updateIncs();
+}
+
+void StudioStringsEngine::updateIncs() {
+    inc1_ = freqHz_ / sampleRate_;
+    inc2_ = (freqHz_ * ParameterScaler::fastExp2(detuneCents_ * (1.0f / 1200.0f))) / sampleRate_;
+}
+
+void StudioStringsEngine::noteOn(uint8_t noteNumber, uint8_t velocity) {
+    velNorm_ = std::clamp(static_cast<float>(velocity) / 127.0f, 0.01f, 1.0f);
+    freqHz_ = 440.0f * ParameterScaler::fastExp2((static_cast<float>(noteNumber) - 69.0f) * (1.0f / 12.0f));
+    updateIncs();
+    phase1_ = 0.0f;
+    phase2_ = 0.3f;
+    ampEnv_.noteOn();
+}
+
+void StudioStringsEngine::noteOff() {
+    ampEnv_.noteOff();
+}
+
+float StudioStringsEngine::processSample() {
+    if (!ampEnv_.isActive()) return 0.0f;
+
+    float dt1 = inc1_;
+    float s1 = 2.0f * phase1_ - 1.0f;
+    if (phase1_ < dt1) {
+        float t = phase1_ / dt1;
+        s1 -= (2.0f * t - t * t - 1.0f);
+    } else if (phase1_ > 1.0f - dt1) {
+        float t = (phase1_ - 1.0f) / dt1;
+        s1 -= (2.0f * t + t * t + 1.0f);
+    }
+    phase1_ += dt1;
+    if (phase1_ >= 1.0f) phase1_ -= 1.0f;
+
+    float dt2 = inc2_;
+    float s2 = 2.0f * phase2_ - 1.0f;
+    if (phase2_ < dt2) {
+        float t = phase2_ / dt2;
+        s2 -= (2.0f * t - t * t - 1.0f);
+    } else if (phase2_ > 1.0f - dt2) {
+        float t = (phase2_ - 1.0f) / dt2;
+        s2 -= (2.0f * t + t * t + 1.0f);
+    }
+    phase2_ += dt2;
+    if (phase2_ >= 1.0f) phase2_ -= 1.0f;
+
+    rng_ = rng_ * 1664525u + 1013904223u;
+    float white = static_cast<float>(rng_ >> 8) * (2.0f / 16777216.0f) - 1.0f;
+    float noise = white - 0.7f * noisePrev_;
+    noisePrev_ = white;
+    float friction = noise * 0.06f * (0.5f + 0.5f * velNorm_);
+
+    float in = 0.5f * (s1 + s2) + friction;
+
+    float f1 = formant1_.process(in);
+    float f2 = formant2_.process(in);
+    float f3 = formant3_.process(in);
+    float body = 0.8f * f1 + 0.7f * f2 + 0.5f * f3;
+
+    float amp = ampEnv_.process() * velNorm_;
+    return (0.35f * in + 0.65f * body) * amp;
+}
+
+void StudioStringsEngine::renderBlock(float* out, int n) {
+    for (int i = 0; i < n; ++i) {
+        out[i] = processSample();
+    }
+}
+
+void StudioStringsEngine::renderBlockAdd(float* acc, int n) {
+    for (int i = 0; i < n; ++i) {
+        acc[i] += processSample();
+    }
+}
+
+FabricXlEngine::FabricXlEngine() {
+    SineLut::init();
+    init(sampleRate_);
+}
+
+void FabricXlEngine::init(float sampleRate) {
+    sampleRate_ = sampleRate;
+    ampEnv_.init(sampleRate_);
+    ampEnv_.setAttackMs(15.0f);
+    ampEnv_.setDecayMs(350.0f);
+    ampEnv_.setSustainLevel(0.7f);
+    ampEnv_.setReleaseMs(350.0f);
+    reset();
+}
+
+void FabricXlEngine::setSampleRate(float sampleRate) {
+    if (sampleRate > 0.0f) {
+        sampleRate_ = sampleRate;
+        ampEnv_.setSampleRate(sampleRate_);
+        updateIncs();
+    }
+}
+
+void FabricXlEngine::reset() {
+    wtPhase1_ = 0.0f;
+    wtPhase2_ = 0.25f;
+    chimePhase_ = 0.0f;
+    chimeEnv_ = 0.0f;
+    breathEnv_ = 0.0f;
+    ampEnv_.reset();
+    updateIncs();
+}
+
+void FabricXlEngine::setDetuneCents(float cents) {
+    detuneCents_ = cents;
+    updateIncs();
+}
+
+void FabricXlEngine::updateIncs() {
+    inc1_ = freqHz_ / sampleRate_;
+    inc2_ = (freqHz_ * ParameterScaler::fastExp2(detuneCents_ * (1.0f / 1200.0f))) / sampleRate_;
+    wtLevel1_ = Wavetables::isReady() ? Wavetables::levelForIncrement(inc1_) : 0;
+    wtLevel2_ = Wavetables::isReady() ? Wavetables::levelForIncrement(inc2_) : 0;
+}
+
+void FabricXlEngine::noteOn(uint8_t noteNumber, uint8_t velocity) {
+    float velNorm = std::clamp(static_cast<float>(velocity) / 127.0f, 0.01f, 1.0f);
+    freqHz_ = 440.0f * ParameterScaler::fastExp2((static_cast<float>(noteNumber) - 69.0f) * (1.0f / 12.0f));
+    updateIncs();
+    wtPhase1_ = 0.0f;
+    wtPhase2_ = 0.25f;
+
+    chimePhase_ = 0.0f;
+    chimeInc_ = std::min((freqHz_ * 4.0f) / sampleRate_, 0.45f);
+    chimeEnv_ = velNorm * 0.4f;
+    chimeDecay_ = std::exp(-1.0f / (sampleRate_ * 0.045f));
+
+    breathEnv_ = velNorm * 0.25f;
+    breathDecay_ = std::exp(-1.0f / (sampleRate_ * 0.030f));
+
+    ampEnv_.noteOn();
+}
+
+void FabricXlEngine::noteOff() {
+    ampEnv_.noteOff();
+}
+
+float FabricXlEngine::processSample() {
+    if (!ampEnv_.isActive()) return 0.0f;
+
+    auto readWt = [&](float phase, int table, int level) {
+        if (!Wavetables::isReady()) {
+            return SineLut::lookupFast(TWO_PI_F * phase);
+        }
+        constexpr int kS = Wavetables::STRIDE;
+        const int16_t* fa = Wavetables::frame(table, level, Wavetables::FRAMES / 2);
+        float x = phase * static_cast<float>(Wavetables::SIZE);
+        int k = static_cast<int>(x);
+        float t = x - static_cast<float>(k);
+        float a0 = static_cast<float>(fa[k]);
+        float a1 = static_cast<float>(fa[k + 1]);
+        return (a0 + t * (a1 - a0)) * Wavetables::SAMPLE_SCALE;
+    };
+
+    float osc1 = readWt(wtPhase1_, 0, wtLevel1_);
+    float osc2 = readWt(wtPhase2_, 2, wtLevel2_);
+
+    wtPhase1_ += inc1_;
+    if (wtPhase1_ >= 1.0f) wtPhase1_ -= 1.0f;
+    wtPhase2_ += inc2_;
+    if (wtPhase2_ >= 1.0f) wtPhase2_ -= 1.0f;
+
+    float chime = SineLut::lookupFast(TWO_PI_F * chimePhase_) * chimeEnv_;
+    chimePhase_ += chimeInc_;
+    if (chimePhase_ >= 1.0f) chimePhase_ -= 1.0f;
+    chimeEnv_ *= chimeDecay_;
+
+    rng_ = rng_ * 1664525u + 1013904223u;
+    float white = static_cast<float>(rng_ >> 8) * (2.0f / 16777216.0f) - 1.0f;
+    float breath = white * breathEnv_;
+    breathEnv_ *= breathDecay_;
+
+    float out = (0.5f * (osc1 + osc2) + chime + breath) * ampEnv_.process();
+    return out;
+}
+
+void FabricXlEngine::renderBlock(float* out, int n) {
+    for (int i = 0; i < n; ++i) {
+        out[i] = processSample();
+    }
+}
+
+void FabricXlEngine::renderBlockAdd(float* acc, int n) {
+    for (int i = 0; i < n; ++i) {
+        acc[i] += processSample();
+    }
+}
+
+MarianaEngine::MarianaEngine() {
+    SineLut::init();
+    init(sampleRate_);
+}
+
+void MarianaEngine::init(float sampleRate) {
+    sampleRate_ = sampleRate;
+    ampEnv_.init(sampleRate_);
+    ampEnv_.setAttackMs(5.0f);
+    ampEnv_.setDecayMs(400.0f);
+    ampEnv_.setSustainLevel(0.8f);
+    ampEnv_.setReleaseMs(150.0f);
+
+    midHpf_.init(sampleRate_);
+    midHpf_.setType(FilterType::Highpass);
+    midHpf_.setCutoff(120.0f);
+    midHpf_.setResonance(0.707f);
+
+    reset();
+}
+
+void MarianaEngine::setSampleRate(float sampleRate) {
+    if (sampleRate > 0.0f) {
+        sampleRate_ = sampleRate;
+        ampEnv_.setSampleRate(sampleRate_);
+        midHpf_.setSampleRate(sampleRate_);
+        inc_ = freqHz_ / sampleRate_;
+    }
+}
+
+void MarianaEngine::reset() {
+    phase_ = 0.0f;
+    dcZ1_ = 0.0f;
+    dcIn1_ = 0.0f;
+    ampEnv_.reset();
+    midHpf_.reset();
+    inc_ = freqHz_ / sampleRate_;
+}
+
+void MarianaEngine::setFrequency(float freqHz) {
+    if (freqHz > 0.0f) {
+        freqHz_ = freqHz;
+        inc_ = freqHz_ / sampleRate_;
+    }
+}
+
+void MarianaEngine::noteOn(uint8_t noteNumber, uint8_t velocity) {
+    (void)velocity;
+    freqHz_ = 440.0f * ParameterScaler::fastExp2((static_cast<float>(noteNumber) - 69.0f) * (1.0f / 12.0f));
+    inc_ = freqHz_ / sampleRate_;
+    phase_ = 0.0f;
+    midHpf_.reset();
+    dcZ1_ = 0.0f;
+    dcIn1_ = 0.0f;
+    ampEnv_.noteOn();
+}
+
+void MarianaEngine::noteOff() {
+    ampEnv_.noteOff();
+}
+
+float MarianaEngine::processSample() {
+    float p = phase_;
+    phase_ += inc_;
+    if (phase_ >= 1.0f) phase_ -= 1.0f;
+
+    float subPhase = p - 0.21f;
+    if (subPhase < 0.0f) subPhase += 1.0f;
+    float sub = 0.8f * SineLut::lookupFast(TWO_PI_F * subPhase);
+
+    float dt = inc_;
+    float saw = 2.0f * p - 1.0f;
+    if (p < dt) {
+        float t = p / dt;
+        saw -= (2.0f * t - t * t - 1.0f);
+    } else if (p > 1.0f - dt) {
+        float t = (p - 1.0f) / dt;
+        saw -= (2.0f * t + t * t + 1.0f);
+    }
+
+    float hp = midHpf_.process(saw);
+    float mid = tube_saturate_sample(hp, drive_, 0.1f, &dcZ1_, &dcIn1_);
+
+    float amp = ampEnv_.process();
+    return (sub + mid) * amp;
+}
+
+void MarianaEngine::renderPaths(float* subOut, float* midOut, int n) {
+    for (int i = 0; i < n; ++i) {
+        float p = phase_;
+        phase_ += inc_;
+        if (phase_ >= 1.0f) phase_ -= 1.0f;
+
+        float subPhase = p - 0.21f;
+        if (subPhase < 0.0f) subPhase += 1.0f;
+        float sub = 0.8f * SineLut::lookupFast(TWO_PI_F * subPhase);
+
+        float dt = inc_;
+        float saw = 2.0f * p - 1.0f;
+        if (p < dt) {
+            float t = p / dt;
+            saw -= (2.0f * t - t * t - 1.0f);
+        } else if (p > 1.0f - dt) {
+            float t = (p - 1.0f) / dt;
+            saw -= (2.0f * t + t * t + 1.0f);
+        }
+
+        float hp = midHpf_.process(saw);
+        float mid = tube_saturate_sample(hp, drive_, 0.1f, &dcZ1_, &dcIn1_);
+
+        if (subOut) subOut[i] = sub;
+        if (midOut) midOut[i] = mid;
+    }
+}
+
+void MarianaEngine::renderBlock(float* out, int n) {
+    for (int i = 0; i < n; ++i) {
+        out[i] = processSample();
+    }
+}
+
+void MarianaEngine::renderBlockAdd(float* acc, int n) {
+    for (int i = 0; i < n; ++i) {
+        acc[i] += processSample();
+    }
+}
+
+HypeEngine::HypeEngine() {
+    SineLut::init();
+    init(sampleRate_);
+}
+
+void HypeEngine::init(float sampleRate) {
+    sampleRate_ = sampleRate;
+    ampEnv_.init(sampleRate_);
+    ampEnv_.setAttackMs(5.0f);
+    ampEnv_.setDecayMs(250.0f);
+    ampEnv_.setSustainLevel(0.75f);
+    ampEnv_.setReleaseMs(200.0f);
+    reset();
+}
+
+void HypeEngine::setSampleRate(float sampleRate) {
+    if (sampleRate > 0.0f) {
+        sampleRate_ = sampleRate;
+        ampEnv_.setSampleRate(sampleRate_);
+        updateIncs();
+    }
+}
+
+void HypeEngine::reset() {
+    stereoBuf_.fill(0.0f);
+    stereoWritePos_ = 0;
+    lfoPhase_ = 0.0f;
+    phase1_ = 0.0f;
+    phase2_ = 0.0f;
+    ampEnv_.reset();
+    updateIncs();
+}
+
+void HypeEngine::setDetuneCents(float cents) {
+    detuneCents_ = cents;
+    updateIncs();
+}
+
+void HypeEngine::updateIncs() {
+    float halfDetune = detuneCents_ * 0.5f;
+    inc1_ = (freqHz_ * ParameterScaler::fastExp2(-halfDetune * (1.0f / 1200.0f))) / sampleRate_;
+    inc2_ = (freqHz_ * ParameterScaler::fastExp2(halfDetune * (1.0f / 1200.0f))) / sampleRate_;
+}
+
+void HypeEngine::noteOn(uint8_t noteNumber, uint8_t velocity) {
+    (void)velocity;
+    freqHz_ = 440.0f * ParameterScaler::fastExp2((static_cast<float>(noteNumber) - 69.0f) * (1.0f / 12.0f));
+    updateIncs();
+
+    rng_ = rng_ * 1664525u + 1013904223u;
+    phase1_ = static_cast<float>(rng_ >> 8) * (1.0f / 16777216.0f);
+    rng_ = rng_ * 1664525u + 1013904223u;
+    phase2_ = static_cast<float>(rng_ >> 8) * (1.0f / 16777216.0f);
+
+    ampEnv_.noteOn();
+}
+
+void HypeEngine::noteOff() {
+    ampEnv_.noteOff();
+}
+
+void HypeEngine::processStereo(float& outL, float& outR) {
+    if (!ampEnv_.isActive()) {
+        outL = 0.0f;
+        outR = 0.0f;
+        return;
+    }
+
+    float dt1 = inc1_;
+    float s1 = 2.0f * phase1_ - 1.0f;
+    if (phase1_ < dt1) {
+        float t = phase1_ / dt1;
+        s1 -= (2.0f * t - t * t - 1.0f);
+    } else if (phase1_ > 1.0f - dt1) {
+        float t = (phase1_ - 1.0f) / dt1;
+        s1 -= (2.0f * t + t * t + 1.0f);
+    }
+    phase1_ += dt1;
+    if (phase1_ >= 1.0f) phase1_ -= 1.0f;
+
+    float dt2 = inc2_;
+    float s2 = 2.0f * phase2_ - 1.0f;
+    if (phase2_ < dt2) {
+        float t = phase2_ / dt2;
+        s2 -= (2.0f * t - t * t - 1.0f);
+    } else if (phase2_ > 1.0f - dt2) {
+        float t = (phase2_ - 1.0f) / dt2;
+        s2 -= (2.0f * t + t * t + 1.0f);
+    }
+    phase2_ += dt2;
+    if (phase2_ >= 1.0f) phase2_ -= 1.0f;
+
+    float monoMix = 0.5f * (s1 + s2);
+
+    stereoBuf_[stereoWritePos_] = monoMix;
+    float lfo = SineLut::lookupFast(TWO_PI_F * lfoPhase_);
+    lfoPhase_ += 0.4f / sampleRate_;
+    if (lfoPhase_ >= 1.0f) lfoPhase_ -= 1.0f;
+
+    int delayL = static_cast<int>(sampleRate_ * (0.007f + 0.002f * lfo));
+    int delayR = static_cast<int>(sampleRate_ * (0.011f - 0.002f * lfo));
+
+    size_t rdL = (stereoWritePos_ + STEREO_BUFFER_SIZE - static_cast<size_t>(delayL)) % STEREO_BUFFER_SIZE;
+    size_t rdR = (stereoWritePos_ + STEREO_BUFFER_SIZE - static_cast<size_t>(delayR)) % STEREO_BUFFER_SIZE;
+    stereoWritePos_ = (stereoWritePos_ + 1) % STEREO_BUFFER_SIZE;
+
+    float delL = stereoBuf_[rdL];
+    float delR = stereoBuf_[rdR];
+
+    float amp = ampEnv_.process();
+    outL = (monoMix + stereoSpread_ * delL) * 0.6f * amp;
+    outR = (monoMix - stereoSpread_ * delR) * 0.6f * amp;
+}
+
+float HypeEngine::processSample() {
+    float l = 0.0f, r = 0.0f;
+    processStereo(l, r);
+    return 0.5f * (l + r);
+}
+
+void HypeEngine::renderBlock(float* out, int n) {
+    for (int i = 0; i < n; ++i) {
+        out[i] = processSample();
+    }
+}
+
+void HypeEngine::renderBlockStereo(float* left, float* right, int n) {
+    for (int i = 0; i < n; ++i) {
+        processStereo(left[i], right[i]);
+    }
+}
+
+void HypeEngine::renderBlockAdd(float* acc, int n) {
+    for (int i = 0; i < n; ++i) {
+        acc[i] += processSample();
+    }
+}
+
+void apply_hype_pump(float* buf_l, float* buf_r, int frames, float pump_depth, float* pump_phase, float pump_inc) {
+    if (!pump_phase) return;
+    float phase = *pump_phase;
+    for (int i = 0; i < frames; ++i) {
+        float inv_p = 1.0f - phase;
+        float duck_gain = 1.0f - (pump_depth * (inv_p * inv_p * inv_p));
+        if (buf_l) buf_l[i] *= duck_gain;
+        if (buf_r) buf_r[i] *= duck_gain;
+        phase += pump_inc;
+        if (phase >= 1.0f) phase -= 1.0f;
+    }
+    *pump_phase = phase;
+}
+
 } // namespace Synth
+
