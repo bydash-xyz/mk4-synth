@@ -312,4 +312,267 @@ private:
 
 using Opx4Voice = Opx4Engine;
 
+class StagePianoEngine {
+public:
+    StagePianoEngine();
+    void init(float sampleRate);
+    void setSampleRate(float sampleRate);
+    void reset();
+
+    void noteOn(uint8_t noteNumber, uint8_t velocity);
+    void noteOff();
+
+    float processSample();
+    void renderBlock(float* out, int n);
+    void renderBlockAdd(float* acc, int n);
+
+    bool isActive() const { return active_; }
+
+    static constexpr size_t DELAY_BUFFER_SIZE = 2048;
+
+private:
+    float sampleRate_{SynthConfig::DEFAULT_SAMPLE_RATE};
+    bool active_{false};
+    uint8_t note_{60};
+    float velocityNorm_{1.0f};
+
+    std::array<float, DELAY_BUFFER_SIZE> delayLine_{};
+    size_t writePos_{0};
+    int delayM_{100};
+
+    float thiranA_{0.0f};
+    float thiranX1_{0.0f};
+    float thiranY1_{0.0f};
+
+    float dispC_{-0.015f};
+    float dispX1_{0.0f};
+    float dispY1_{0.0f};
+
+    float dampD_{0.2f};
+    float dampPrev_{0.0f};
+    float loopGain_{0.9996f};
+
+    std::array<float, 128> hammerBuffer_{};
+    size_t hammerLen_{0};
+    size_t hammerPos_{0};
+
+    float releaseGain_{1.0f};
+    float releaseCoef_{0.995f};
+
+    void updateTuning(float freqHz, float velNorm);
+};
+
+class StageEpEngine {
+public:
+    StageEpEngine();
+    void init(float sampleRate);
+    void setSampleRate(float sampleRate);
+    void reset();
+
+    void noteOn(uint8_t noteNumber, uint8_t velocity);
+    void noteOff();
+
+    void setPhaserRate(float hz) { phaserRateHz_ = hz; }
+    void setTremoloDepth(float depth) { tremoloDepth_ = depth; }
+
+    float processSample();
+    void processStereo(float& outL, float& outR);
+    void renderBlock(float* out, int n);
+    void renderBlockStereo(float* left, float* right, int n);
+    void renderBlockAdd(float* acc, int n);
+
+    bool isActive() const { return ampEnv_.isActive(); }
+
+private:
+    float sampleRate_{SynthConfig::DEFAULT_SAMPLE_RATE};
+    float freqHz_{440.0f};
+    float carrierPhase_{0.0f};
+    float modPhase_{0.0f};
+    float carrierInc_{0.01f};
+    float modInc_{0.14f};
+
+    float modEnv_{0.0f};
+    float modDecayCoef_{0.995f};
+    float fmIndex_{2.0f};
+    float drive_{1.5f};
+
+    Envelope ampEnv_;
+
+    float phaserPhase_{0.0f};
+    float phaserRateHz_{0.5f};
+    std::array<float, 4> apX1_{};
+    std::array<float, 4> apY1_{};
+
+    float tremoloPhase_{0.0f};
+    float tremoloRateHz_{4.5f};
+    float tremoloDepth_{0.5f};
+};
+
+class StudioStringsEngine {
+public:
+    StudioStringsEngine();
+    void init(float sampleRate);
+    void setSampleRate(float sampleRate);
+    void reset();
+
+    void noteOn(uint8_t noteNumber, uint8_t velocity);
+    void noteOff();
+
+    void setDetuneCents(float cents);
+
+    float processSample();
+    void renderBlock(float* out, int n);
+    void renderBlockAdd(float* acc, int n);
+
+    bool isActive() const { return ampEnv_.isActive(); }
+
+private:
+    float sampleRate_{SynthConfig::DEFAULT_SAMPLE_RATE};
+    float freqHz_{440.0f};
+    float detuneCents_{8.0f};
+
+    float phase1_{0.0f};
+    float phase2_{0.0f};
+    float inc1_{0.01f};
+    float inc2_{0.01f};
+
+    uint32_t rng_{0x55AA1234u};
+    float noisePrev_{0.0f};
+    float velNorm_{1.0f};
+
+    Envelope ampEnv_;
+
+    StateVariableFilter formant1_;
+    StateVariableFilter formant2_;
+    StateVariableFilter formant3_;
+
+    void updateIncs();
+};
+
+class FabricXlEngine {
+public:
+    FabricXlEngine();
+    void init(float sampleRate);
+    void setSampleRate(float sampleRate);
+    void reset();
+
+    void noteOn(uint8_t noteNumber, uint8_t velocity);
+    void noteOff();
+
+    void setDetuneCents(float cents);
+
+    float processSample();
+    void renderBlock(float* out, int n);
+    void renderBlockAdd(float* acc, int n);
+
+    bool isActive() const { return ampEnv_.isActive(); }
+
+private:
+    float sampleRate_{SynthConfig::DEFAULT_SAMPLE_RATE};
+    float freqHz_{440.0f};
+    float detuneCents_{6.0f};
+
+    float wtPhase1_{0.0f};
+    float wtPhase2_{0.0f};
+    float inc1_{0.01f};
+    float inc2_{0.01f};
+    int wtLevel1_{0};
+    int wtLevel2_{0};
+
+    float chimePhase_{0.0f};
+    float chimeInc_{0.1f};
+    float chimeEnv_{0.0f};
+    float chimeDecay_{0.998f};
+
+    float breathEnv_{0.0f};
+    float breathDecay_{0.996f};
+    uint32_t rng_{0x98765432u};
+
+    Envelope ampEnv_;
+
+    void updateIncs();
+};
+
+class MarianaEngine {
+public:
+    MarianaEngine();
+    void init(float sampleRate);
+    void setSampleRate(float sampleRate);
+    void reset();
+
+    void noteOn(uint8_t noteNumber, uint8_t velocity);
+    void noteOff();
+
+    void setFrequency(float freqHz);
+    void setDrive(float drive) { drive_ = drive; }
+
+    float processSample();
+    void renderBlock(float* out, int n);
+    void renderBlockAdd(float* acc, int n);
+    void renderPaths(float* subOut, float* midOut, int n);
+
+    bool isActive() const { return ampEnv_.isActive(); }
+
+private:
+    float sampleRate_{SynthConfig::DEFAULT_SAMPLE_RATE};
+    float freqHz_{120.0f};
+    float phase_{0.0f};
+    float inc_{0.01f};
+    float drive_{1.5f};
+
+    StateVariableFilter midHpf_;
+    float dcZ1_{0.0f};
+    float dcIn1_{0.0f};
+
+    Envelope ampEnv_;
+};
+
+class HypeEngine {
+public:
+    HypeEngine();
+    void init(float sampleRate);
+    void setSampleRate(float sampleRate);
+    void reset();
+
+    void noteOn(uint8_t noteNumber, uint8_t velocity);
+    void noteOff();
+
+    void setDetuneCents(float cents);
+    void setStereoSpread(float spread) { stereoSpread_ = spread; }
+
+    float processSample();
+    void processStereo(float& outL, float& outR);
+    void renderBlock(float* out, int n);
+    void renderBlockStereo(float* left, float* right, int n);
+    void renderBlockAdd(float* acc, int n);
+
+    bool isActive() const { return ampEnv_.isActive(); }
+
+    static constexpr size_t STEREO_BUFFER_SIZE = 1024;
+
+private:
+    float sampleRate_{SynthConfig::DEFAULT_SAMPLE_RATE};
+    float freqHz_{440.0f};
+    float detuneCents_{12.0f};
+    float stereoSpread_{0.8f};
+
+    float phase1_{0.0f};
+    float phase2_{0.0f};
+    float inc1_{0.01f};
+    float inc2_{0.01f};
+
+    uint32_t rng_{0xDEADBEEFu};
+
+    std::array<float, STEREO_BUFFER_SIZE> stereoBuf_{};
+    size_t stereoWritePos_{0};
+    float lfoPhase_{0.0f};
+
+    Envelope ampEnv_;
+
+    void updateIncs();
+};
+
+void apply_hype_pump(float* buf_l, float* buf_r, int frames, float pump_depth, float* pump_phase, float pump_inc);
+
 } // namespace Synth
+

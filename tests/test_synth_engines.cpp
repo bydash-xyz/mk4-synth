@@ -539,6 +539,201 @@ static void testOpx4AndSolina() {
     }
 }
 
+static void testCaricatureEngines() {
+    std::printf("Caricature Engines: physical modeling, FM bark, strings, tables, bass coherence, hypersaw\n");
+
+    {
+        StagePianoEngine piano;
+        piano.init(SR);
+
+        auto detectPitchAutocorr = [](const std::vector<float>& y, float expectedF0, float sr) -> float {
+            float T0 = sr / expectedF0;
+            int lagMin = std::max(2, static_cast<int>(T0 * 0.85f));
+            int lagMax = std::min(4096, static_cast<int>(T0 * 1.15f));
+            int bestLag = lagMin;
+            float bestCorr = -1e9f;
+            std::vector<float> r(lagMax + 3, 0.0f);
+            const int start = 2048;
+            const int N = 8192;
+            for (int lag = lagMin - 1; lag <= lagMax + 1; ++lag) {
+                float s = 0.0f, e1 = 0.0f, e2 = 0.0f;
+                for (int j = 0; j < N; ++j) {
+                    float y1 = y[start + j];
+                    float y2 = y[start + j + lag];
+                    s += y1 * y2;
+                    e1 += y1 * y1;
+                    e2 += y2 * y2;
+                }
+                float norm = s / (std::sqrt(e1 * e2) + 1e-30f);
+                r[lag] = norm;
+                if (lag >= lagMin && lag <= lagMax && norm > bestCorr) {
+                    bestCorr = norm;
+                    bestLag = lag;
+                }
+            }
+            float alpha = r[bestLag - 1];
+            float beta = r[bestLag];
+            float gamma = r[bestLag + 1];
+            float peakOffset = 0.5f * (alpha - gamma) / (alpha - 2.0f * beta + gamma + 1e-30f);
+            float measuredLag = static_cast<float>(bestLag) + peakOffset;
+            return sr / measuredLag;
+        };
+
+        struct NoteCheck { uint8_t note; float f0; const char* name; };
+        const NoteCheck checks[] = {
+            {33, 55.0f, "A1"},
+            {57, 220.0f, "A3"},
+            {81, 880.0f, "A5"}
+        };
+
+        for (const auto& c : checks) {
+            piano.noteOn(c.note, 100);
+            std::vector<float> y(16384, 0.0f);
+            piano.renderBlock(y.data(), static_cast<int>(y.size()));
+            float detectedF0 = detectPitchAutocorr(y, c.f0, SR);
+            float errCents = 1200.0f * std::log2(detectedF0 / c.f0);
+            CHECK(std::abs(errCents) <= 1.5f, "StagePianoEngine %s (note %d): %.3f cents error (limit +-1.5)",
+                  c.name, c.note, errCents);
+        }
+    }
+
+    {
+        auto measureBarkRatio = [](uint8_t vel) -> float {
+            StageEpEngine ep;
+            ep.init(SR);
+            ep.noteOn(57, vel);
+            std::vector<float> y(4096);
+            ep.renderBlock(y.data(), static_cast<int>(y.size()));
+
+            float f0 = noteHz(57);
+            float dt = f0 / SR;
+            const int start = 1024;
+            const int L = 2048;
+            float fundSin = 0.0f, fundCos = 0.0f;
+            for (int j = 0; j < L; ++j) {
+                float phi = TWO_PI_F * dt * static_cast<float>(start + j);
+                fundSin += y[start + j] * std::sin(phi);
+                fundCos += y[start + j] * std::cos(phi);
+            }
+            fundSin /= static_cast<float>(L);
+            fundCos /= static_cast<float>(L);
+            float fundPwr = fundSin * fundSin + fundCos * fundCos;
+
+            float harmPwr = 0.0f;
+            for (int h = 2; h <= 6; ++h) {
+                float hSin = 0.0f, hCos = 0.0f;
+                for (int j = 0; j < L; ++j) {
+                    float phi = TWO_PI_F * dt * static_cast<float>(h * (start + j));
+                    hSin += y[start + j] * std::sin(phi);
+                    hCos += y[start + j] * std::cos(phi);
+                }
+                hSin /= static_cast<float>(L);
+                hCos /= static_cast<float>(L);
+                harmPwr += (hSin * hSin + hCos * hCos);
+            }
+            return harmPwr / (fundPwr + 1e-12f);
+        };
+
+        float barkLow = measureBarkRatio(30);
+        float barkHigh = measureBarkRatio(127);
+        CHECK(barkHigh > barkLow, "StageEpEngine velocity bark: vel 127 ratio (%.4f) > vel 30 ratio (%.4f)",
+              barkHigh, barkLow);
+    }
+
+    {
+        StudioStringsEngine strings;
+        strings.init(SR);
+        strings.noteOn(60, 100);
+        std::vector<float> strBlock(1024);
+        strings.renderBlock(strBlock.data(), static_cast<int>(strBlock.size()));
+
+        float peakStr = 0.0f;
+        bool finiteStr = true;
+        for (float s : strBlock) {
+            finiteStr = finiteStr && std::isfinite(s);
+            peakStr = std::max(peakStr, std::abs(s));
+        }
+        CHECK(finiteStr && peakStr > 0.01f, "StudioStringsEngine block: finite=%d peak=%.4f", finiteStr, peakStr);
+
+        FabricXlEngine fabric;
+        fabric.init(SR);
+        fabric.noteOn(60, 100);
+        std::vector<float> fabBlock(1024);
+        fabric.renderBlock(fabBlock.data(), static_cast<int>(fabBlock.size()));
+
+        float peakFab = 0.0f;
+        bool finiteFab = true;
+        for (float s : fabBlock) {
+            finiteFab = finiteFab && std::isfinite(s);
+            peakFab = std::max(peakFab, std::abs(s));
+        }
+        CHECK(finiteFab && peakFab > 0.01f, "FabricXlEngine block: finite=%d peak=%.4f", finiteFab, peakFab);
+    }
+
+    {
+        MarianaEngine mariana;
+        mariana.init(SR);
+        mariana.noteOn(47, 100);
+        mariana.setFrequency(120.0f);
+
+        const int N = 2048;
+        std::vector<float> sub(N), mid(N);
+        mariana.renderPaths(sub.data(), mid.data(), N);
+
+        float sumSqSub = 0.0f, sumSqMid = 0.0f, sumSqSum = 0.0f;
+        for (int i = 512; i < N; ++i) {
+            float s = sub[i];
+            float m = mid[i];
+            float sumVal = s + m;
+            sumSqSub += s * s;
+            sumSqMid += m * m;
+            sumSqSum += sumVal * sumVal;
+        }
+        int count = N - 512;
+        float rmsSub = std::sqrt(sumSqSub / static_cast<float>(count));
+        float rmsMid = std::sqrt(sumSqMid / static_cast<float>(count));
+        float rmsSum = std::sqrt(sumSqSum / static_cast<float>(count));
+
+        CHECK(rmsSum > rmsSub, "MarianaEngine constructive phase: rms(sub+mid)=%.4f > rms(sub)=%.4f",
+              rmsSum, rmsSub);
+        CHECK(rmsSum > rmsMid, "MarianaEngine constructive phase: rms(sub+mid)=%.4f > rms(mid)=%.4f",
+              rmsSum, rmsMid);
+    }
+
+    {
+        HypeEngine hype;
+        hype.init(SR);
+        hype.noteOn(60, 100);
+
+        const int N = 2048;
+        std::vector<float> left(N), right(N);
+        hype.renderBlockStereo(left.data(), right.data(), N);
+
+        float dot = 0.0f, normL = 0.0f, normR = 0.0f;
+        for (int i = 512; i < N; ++i) {
+            dot += left[i] * right[i];
+            normL += left[i] * left[i];
+            normR += right[i] * right[i];
+        }
+        float corr = dot / (std::sqrt(normL * normR) + 1e-9f);
+        CHECK(std::abs(corr) < 0.95f, "HypeEngine stereo decorrelation: corr=%.3f", corr);
+        CHECK(normL > 0.01f && normR > 0.01f, "HypeEngine stereo energy present on both channels");
+
+        std::vector<float> pumpL(512, 1.0f), pumpR(512, 1.0f);
+        float pumpPhase = 0.0f;
+        float pumpInc = 1.0f / 512.0f;
+        apply_hype_pump(pumpL.data(), pumpR.data(), 512, 0.8f, &pumpPhase, pumpInc);
+
+        CHECK(pumpL[0] < 0.25f && pumpL[0] > 0.15f, "apply_hype_pump initial ducking depth (val=%.3f, expected ~0.20)", pumpL[0]);
+        CHECK(pumpL[256] > 0.85f && pumpL[256] < 0.95f, "apply_hype_pump recovery midpoint (val=%.3f, expected ~0.90)", pumpL[256]);
+        CHECK(pumpL[511] > 0.99f, "apply_hype_pump recovery completion (val=%.3f, expected ~1.00)", pumpL[511]);
+
+        float testPhase = 0.0f;
+        apply_hype_pump(nullptr, nullptr, 256, 0.5f, &testPhase, 1.0f / 512.0f);
+        CHECK(std::abs(testPhase - 0.5f) < 1e-4f, "apply_hype_pump phase advancement (phase=%.3f, expected 0.500)", testPhase);
+    }
+}
+
 int main() {
     testPitchAndBandLimit();
     testWavetableMorph();
@@ -550,6 +745,7 @@ int main() {
     testPatchRoundTrip();
     testLegacyV1Models();
     testOpx4AndSolina();
+    testCaricatureEngines();
     if (g_failures) {
         std::printf("%d check(s) failed\n", g_failures);
         return 1;
