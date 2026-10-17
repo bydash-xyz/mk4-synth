@@ -177,6 +177,31 @@ inline EngineMode presetEngineMode(const Preset& p) {
 
 using SynthParameters = Preset;
 
+enum ArchetypeId : uint8_t {
+    ARCH_MINI_D   = 0,
+    ARCH_JURA     = 1,
+    ARCH_BASSLINE = 2,
+    ARCH_ORGAN    = 3,
+    ARCH_ELECTRIC = 4,
+    ARCH_COUNT    = 5
+};
+
+struct engine_calibration_t {
+    uint8_t archetype_id;
+    uint8_t max_voices;
+    float voice_norm_scalar;
+    float resonance_makeup;
+    float master_trim_linear;
+};
+
+static constexpr engine_calibration_t kArchetypeCalib[ARCH_COUNT] = {
+    { ARCH_MINI_D,   4, 0.500f, 1.45f, 0.891f },
+    { ARCH_JURA,     6, 0.408f, 1.25f, 0.794f },
+    { ARCH_BASSLINE, 1, 1.000f, 1.60f, 0.707f },
+    { ARCH_ORGAN,    8, 0.250f, 1.00f, 0.630f },
+    { ARCH_ELECTRIC, 8, 0.353f, 1.10f, 1.122f }
+};
+
 // Hardware character of each modelled instrument, independent of the patch parameters
 struct ModelVoicing {
     FilterModel filter;     // Filter topology
@@ -192,7 +217,7 @@ inline ModelVoicing getModelVoicing(SynthModel model) {
     switch (model) {
         //                                  filter                 keyTrk vel   accent sync   drift voices
         case SynthModel::Juno60:   return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.3f, 6}; // DCOs: stable pitch
-        case SynthModel::Minimoog: return {FilterModel::Ladder24, 0.33f, 0.0f, false, false, 1.0f, 1};
+        case SynthModel::Minimoog: return {FilterModel::Ladder24, 0.33f, 0.0f, false, false, 1.0f, 4};
         case SynthModel::Prophet5: return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.8f, 5}; // CEM3320 4-pole
         case SynthModel::TB303:    return {FilterModel::Ladder24, 0.0f,  0.0f, true,  false, 0.3f, 1};
         case SynthModel::CS80:     return {FilterModel::Svf12,    0.5f,  0.7f, false, false, 0.8f, 8};
@@ -209,7 +234,7 @@ inline ModelVoicing getModelVoicing(SynthModel model) {
         case SynthModel::FM_WarmRhodes:
         case SynthModel::FM_Clavinet:
         case SynthModel::FM_DrawbarOrgan:
-                                   return {FilterModel::Svf12,    0.0f,  1.0f, false, true,  0.0f, 0};
+                                   return {FilterModel::Svf12,    0.0f,  1.0f, false, true,  0.0f, 8};
         // PPG Wave 2.3: digital oscillators into an SSM2044 4-pole VCF; Microwave: CEM3387 4-pole
         case SynthModel::PPG_Wave: return {FilterModel::Ladder24, 0.5f,  0.5f, false, true,  0.0f, 8};
         case SynthModel::WT_VoxPad:return {FilterModel::Ladder24, 0.5f,  0.6f, false, true,  0.0f, 8};
@@ -221,7 +246,7 @@ inline ModelVoicing getModelVoicing(SynthModel model) {
         case SynthModel::KS_Koto:  return {FilterModel::Svf12,    0.0f,  1.0f, false, true,  0.0f, 0};
         // Tonewheel organ: no velocity, stable pitch
         case SynthModel::B3_Jazz:
-        case SynthModel::B3_Gospel:return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 0};
+        case SynthModel::B3_Gospel:return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 8};
         default:                   // Generic user patch
                                    return {FilterModel::Ladder24, 0.5f,  0.5f, false, false, 0.5f, 0};
     }
