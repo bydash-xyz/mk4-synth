@@ -37,6 +37,13 @@ public:
         return s_table[idx1] + frac * (s_table[idx2] - s_table[idx1]);
     }
 
+    static inline float lookupPhase32(uint32_t phase) {
+        uint32_t idx0 = (phase >> 21) & (SINE_LUT_SIZE - 1);
+        uint32_t idx1 = (idx0 + 1) & (SINE_LUT_SIZE - 1);
+        float frac = static_cast<float>(phase & 0x1FFFFFu) * (1.0f / 2097152.0f);
+        return s_table[idx0] + frac * (s_table[idx1] - s_table[idx0]);
+    }
+
 private:
     static float s_table[SINE_LUT_SIZE];
     static bool s_initialized;

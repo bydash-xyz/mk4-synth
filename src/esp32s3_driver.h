@@ -4,6 +4,11 @@
 
 #include <Arduino.h>
 #include <atomic>
+#include <cstdint>
+#include <cstring>
+#include <algorithm>
+#include <cmath>
+#include <array>
 
 #if defined(MOCK_HAL) || __has_include(<driver/i2s_std.h>)
 #include <driver/i2s_std.h>
@@ -298,6 +303,295 @@ inline bool initHardware(Synth::SynthEngine& engine) {
     Serial.println(" Ready! <<<");
     return true;
 }
+
+// -------------------------------------------------------------
+// IMA ADPCM Decoder & PSRAM Voice Streaming Pipeline
+// -------------------------------------------------------------
+
+inline constexpr int8_t kImaIndexTable[16] = {
+    -1, -1, -1, -1, 2, 4, 6, 8,
+    -1, -1, -1, -1, 2, 4, 6, 8
+};
+
+inline constexpr int16_t kImaStepTable[89] = {
+    7, 8, 9, 10, 11, 12, 13, 14, 16, 17,
+    19, 21, 23, 25, 28, 31, 34, 37, 41, 45,
+    50, 55, 60, 66, 73, 80, 88, 97, 107, 118,
+    130, 143, 157, 173, 190, 209, 230, 253, 279, 307,
+    337, 371, 408, 449, 494, 544, 598, 658, 724, 796,
+    876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066,
+    2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358,
+    5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899,
+    15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
+};
+
+inline int16_t decodeImaAdpcmSample(uint8_t nibble, int16_t& predicted, int8_t& stepIndex) {
+    int step = kImaStepTable[std::clamp<int>(stepIndex, 0, 88)];
+    int diff = step >> 3;
+    if (nibble & 4) diff += step;
+    if (nibble & 2) diff += (step >> 1);
+    if (nibble & 1) diff += (step >> 2);
+
+    int pred = (nibble & 8) ? (predicted - diff) : (predicted + diff);
+    predicted = static_cast<int16_t>(std::clamp(pred, -32768, 32767));
+
+    int nextIndex = stepIndex + kImaIndexTable[nibble & 0x0F];
+    stepIndex = static_cast<int8_t>(std::clamp(nextIndex, 0, 88));
+
+    return predicted;
+}
+
+inline void decodeImaAdpcmBlock(const uint8_t* encoded, size_t numEncodedBytes, int16_t* outPcm, int16_t& predicted, int8_t& stepIndex) {
+    for (size_t i = 0; i < numEncodedBytes; ++i) {
+        uint8_t byte = encoded[i];
+        *outPcm++ = decodeImaAdpcmSample(byte & 0x0F, predicted, stepIndex);
+        *outPcm++ = decodeImaAdpcmSample((byte >> 4) & 0x0F, predicted, stepIndex);
+    }
+}
+
+inline uint8_t encodeImaAdpcmSample(int16_t sample, int16_t& predicted, int8_t& stepIndex) {
+    int step = kImaStepTable[std::clamp<int>(stepIndex, 0, 88)];
+    int diff = sample - predicted;
+    uint8_t nibble = 0;
+    if (diff < 0) {
+        nibble = 8;
+        diff = -diff;
+    }
+    if (diff >= step) {
+        nibble |= 4;
+        diff -= step;
+    }
+    if (diff >= (step >> 1)) {
+        nibble |= 2;
+        diff -= (step >> 1);
+    }
+    if (diff >= (step >> 2)) {
+        nibble |= 1;
+    }
+    decodeImaAdpcmSample(nibble, predicted, stepIndex);
+    return nibble;
+}
+
+inline void encodeImaAdpcmBlock(const int16_t* inPcm, size_t numPcmSamples, uint8_t* outEncoded, int16_t& predicted, int8_t& stepIndex) {
+    for (size_t i = 0; i < numPcmSamples; i += 2) {
+        uint8_t n0 = encodeImaAdpcmSample(inPcm[i], predicted, stepIndex);
+        uint8_t n1 = (i + 1 < numPcmSamples) ? encodeImaAdpcmSample(inPcm[i + 1], predicted, stepIndex) : 0;
+        outEncoded[i / 2] = n0 | (n1 << 4);
+    }
+}
+
+inline float readSampleHermite(float frac, float y0, float y1, float y2, float y3) {
+    const float c0 = y1;
+    const float c1 = 0.5f * (y2 - y0);
+    const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+    const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+    return ((c3 * frac + c2) * frac + c1) * frac + c0;
+}
+
+enum class StreamMode : uint8_t {
+    Linear = 0,
+    Mellotron = 1,
+    VintagePro = 2
+};
+
+struct PsramVoiceStream {
+    static constexpr size_t ATTACK_HEADER_SAMPLES = 512;
+    static constexpr size_t PING_PONG_HALF_SIZE = 256;
+    static constexpr size_t MAX_MELLOTRON_TAPE_SAMPLES = 22050 * 15 / 2;
+
+    int16_t attackHeader[ATTACK_HEADER_SAMPLES]{};
+    int16_t pingPong[2][PING_PONG_HALF_SIZE]{};
+
+    std::atomic<uint8_t> activeHalf{0};
+    std::atomic<bool> refillNeeded{false};
+    std::atomic<bool> active{false};
+
+    StreamMode mode{StreamMode::Linear};
+    double playbackPos{0.0};
+    double halfSamplePos{0.0};
+    uint32_t totalSamplesRead{0};
+    float lastSample_{0.0f};
+
+    const uint8_t* psramSource{nullptr};
+    size_t psramByteOffset{0};
+    size_t psramTotalBytes{0};
+    bool isAdpcm{false};
+
+    int16_t adpcmPredicted{0};
+    int8_t adpcmStepIndex{0};
+
+    bool loopEnabled{false};
+    uint32_t loopStart{0};
+    uint32_t loopEnd{0};
+    uint32_t loopCrossfadeSamples{256};
+
+    void init() {
+        std::memset(attackHeader, 0, sizeof(attackHeader));
+        std::memset(pingPong, 0, sizeof(pingPong));
+        activeHalf.store(0, std::memory_order_relaxed);
+        refillNeeded.store(false, std::memory_order_relaxed);
+        active.store(false, std::memory_order_relaxed);
+        playbackPos = 0.0;
+        halfSamplePos = 0.0;
+        totalSamplesRead = 0;
+        lastSample_ = 0.0f;
+        psramSource = nullptr;
+        psramByteOffset = 0;
+        psramTotalBytes = 0;
+        isAdpcm = false;
+        adpcmPredicted = 0;
+        adpcmStepIndex = 0;
+        loopEnabled = false;
+        loopStart = 0;
+        loopEnd = 0;
+        loopCrossfadeSamples = 256;
+        mode = StreamMode::Linear;
+    }
+
+    void trigger(const int16_t* headerData, const uint8_t* psramData, size_t psramBytes,
+                 bool adpcm = false, StreamMode streamMode = StreamMode::Linear) {
+        if (headerData) {
+            std::memcpy(attackHeader, headerData, ATTACK_HEADER_SAMPLES * sizeof(int16_t));
+        } else {
+            std::memset(attackHeader, 0, sizeof(attackHeader));
+        }
+        std::memset(pingPong, 0, sizeof(pingPong));
+
+        mode = streamMode;
+        psramSource = psramData;
+        psramTotalBytes = psramBytes;
+        psramByteOffset = 0;
+        isAdpcm = adpcm;
+        adpcmPredicted = 0;
+        adpcmStepIndex = 0;
+
+        playbackPos = 0.0;
+        halfSamplePos = 0.0;
+        totalSamplesRead = 0;
+        lastSample_ = (headerData) ? static_cast<float>(headerData[0]) : 0.0f;
+
+        activeHalf.store(0, std::memory_order_relaxed);
+        refillNeeded.store(false, std::memory_order_relaxed);
+        active.store(true, std::memory_order_release);
+
+        if (psramSource && psramTotalBytes > 0) {
+            if (isAdpcm) {
+                size_t bytesToDecode = std::min<size_t>(128, psramTotalBytes - psramByteOffset);
+                decodeImaAdpcmBlock(psramSource + psramByteOffset, bytesToDecode, pingPong[0], adpcmPredicted, adpcmStepIndex);
+                psramByteOffset += bytesToDecode;
+            } else {
+                size_t bytesToCopy = std::min<size_t>(PING_PONG_HALF_SIZE * sizeof(int16_t), psramTotalBytes - psramByteOffset);
+                std::memcpy(pingPong[0], psramSource + psramByteOffset, bytesToCopy);
+                psramByteOffset += bytesToCopy;
+            }
+        }
+    }
+
+    bool refillPingPongFromPsram() {
+        uint8_t curHalf = activeHalf.load(std::memory_order_acquire);
+        uint8_t inactive = 1 - curHalf;
+
+        if (psramSource && psramTotalBytes > 0) {
+            if (psramByteOffset >= psramTotalBytes) {
+                if (mode == StreamMode::VintagePro && loopEnabled && loopEnd > loopStart) {
+                    size_t loopStartByte = isAdpcm ? (loopStart / 2) : (loopStart * sizeof(int16_t));
+                    psramByteOffset = std::min(loopStartByte, psramTotalBytes);
+                }
+            }
+
+            if (psramByteOffset < psramTotalBytes) {
+                if (isAdpcm) {
+                    size_t bytesToDecode = std::min<size_t>(128, psramTotalBytes - psramByteOffset);
+                    decodeImaAdpcmBlock(psramSource + psramByteOffset, bytesToDecode, pingPong[inactive], adpcmPredicted, adpcmStepIndex);
+                    psramByteOffset += bytesToDecode;
+                } else {
+                    size_t bytesToCopy = std::min<size_t>(PING_PONG_HALF_SIZE * sizeof(int16_t), psramTotalBytes - psramByteOffset);
+                    std::memcpy(pingPong[inactive], psramSource + psramByteOffset, bytesToCopy);
+                    psramByteOffset += bytesToCopy;
+                }
+            } else {
+                std::memset(pingPong[inactive], 0, sizeof(pingPong[inactive]));
+            }
+        } else {
+            std::memset(pingPong[inactive], 0, sizeof(pingPong[inactive]));
+        }
+
+        activeHalf.store(inactive, std::memory_order_release);
+        refillNeeded.store(false, std::memory_order_release);
+        return true;
+    }
+
+    float readSampleHermite(float pitchRatio = 1.0f) {
+        if (!active.load(std::memory_order_relaxed)) {
+            return 0.0f;
+        }
+
+        if (mode == StreamMode::Mellotron) {
+            if (totalSamplesRead >= MAX_MELLOTRON_TAPE_SAMPLES) {
+                active.store(false, std::memory_order_relaxed);
+                return 0.0f;
+            }
+        }
+
+        totalSamplesRead++;
+
+        float out = 0.0f;
+        if (playbackPos < static_cast<double>(ATTACK_HEADER_SAMPLES)) {
+            int i = static_cast<int>(playbackPos);
+            float frac = static_cast<float>(playbackPos - static_cast<double>(i));
+
+            float y0 = (i > 0) ? static_cast<float>(attackHeader[i - 1]) : lastSample_;
+            float y1 = static_cast<float>(attackHeader[i]);
+            float y2 = (i + 1 < static_cast<int>(ATTACK_HEADER_SAMPLES))
+                           ? static_cast<float>(attackHeader[i + 1])
+                           : static_cast<float>(pingPong[activeHalf.load(std::memory_order_acquire)][0]);
+            float y3 = (i + 2 < static_cast<int>(ATTACK_HEADER_SAMPLES))
+                           ? static_cast<float>(attackHeader[i + 2])
+                           : static_cast<float>(pingPong[activeHalf.load(std::memory_order_acquire)][std::min<int>(1, PING_PONG_HALF_SIZE - 1)]);
+
+            out = HardwareDriver::readSampleHermite(frac, y0, y1, y2, y3);
+            lastSample_ = y1;
+
+            playbackPos += pitchRatio;
+            if (playbackPos >= static_cast<double>(ATTACK_HEADER_SAMPLES)) {
+                halfSamplePos = playbackPos - static_cast<double>(ATTACK_HEADER_SAMPLES);
+                refillNeeded.store(true, std::memory_order_release);
+            }
+        } else {
+            uint8_t curHalf = activeHalf.load(std::memory_order_acquire);
+            int i = static_cast<int>(halfSamplePos);
+            float frac = static_cast<float>(halfSamplePos - static_cast<double>(i));
+
+            float y0 = (i > 0) ? static_cast<float>(pingPong[curHalf][i - 1]) : lastSample_;
+            float y1 = static_cast<float>(pingPong[curHalf][std::min<int>(i, PING_PONG_HALF_SIZE - 1)]);
+            float y2 = (i + 1 < static_cast<int>(PING_PONG_HALF_SIZE))
+                           ? static_cast<float>(pingPong[curHalf][i + 1])
+                           : static_cast<float>(pingPong[1 - curHalf][0]);
+            float y3 = (i + 2 < static_cast<int>(PING_PONG_HALF_SIZE))
+                           ? static_cast<float>(pingPong[curHalf][i + 2])
+                           : static_cast<float>(pingPong[1 - curHalf][std::min<int>(i + 2 - PING_PONG_HALF_SIZE, PING_PONG_HALF_SIZE - 1)]);
+
+            out = HardwareDriver::readSampleHermite(frac, y0, y1, y2, y3);
+            lastSample_ = y1;
+
+            halfSamplePos += pitchRatio;
+            playbackPos += pitchRatio;
+
+            if (halfSamplePos >= static_cast<double>(PING_PONG_HALF_SIZE)) {
+                halfSamplePos -= static_cast<double>(PING_PONG_HALF_SIZE);
+                refillNeeded.store(true, std::memory_order_release);
+            }
+
+            if (mode == StreamMode::VintagePro && loopEnabled && loopEnd > loopStart) {
+                if (playbackPos >= static_cast<double>(loopEnd)) {
+                    playbackPos = static_cast<double>(loopStart) + (playbackPos - static_cast<double>(loopEnd));
+                }
+            }
+        }
+
+        return out * (1.0f / 32768.0f);
+    }
+};
 
 } // namespace HardwareDriver
 
