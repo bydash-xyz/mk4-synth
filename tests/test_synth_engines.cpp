@@ -417,6 +417,128 @@ static void testLegacyV1Models() {
     }
 }
 
+static float measureToneGain(SolinaEnsemble& ensemble, float freqHz) {
+    ensemble.reset();
+    float sumIn2 = 0.0f;
+    float sumOut2 = 0.0f;
+    for (int i = 0; i < 512; ++i) {
+        float in = std::sin(2.0f * M_PI * freqHz * i / SR);
+        float outL = 0.0f, outR = 0.0f;
+        ensemble.processSample(in, in, outL, outR);
+        if (i >= 256) {
+            sumIn2 += in * in;
+            sumOut2 += outL * outL;
+        }
+    }
+    return std::sqrt(sumOut2 / (sumIn2 + 1e-9f));
+}
+
+static void testOpx4AndSolina() {
+    std::printf("OPx-4 4-Operator FM synthesis & Solina Ensemble checks\n");
+
+    for (int algo = 0; algo < 8; ++algo) {
+        Opx4Engine opx;
+        opx.init(SR);
+        opx.setAlgorithm(algo);
+        opx.setFrequency(440.0f);
+        opx.setOpRatio(0, 1.0f);
+        opx.setOpRatio(1, 1.0f);
+        opx.setOpRatio(2, 2.0f);
+        opx.setOpRatio(3, 3.0f);
+        opx.setOpLevel(0, 1.0f);
+        opx.setOpLevel(1, 1.0f);
+        opx.setOpLevel(2, 1.0f);
+        opx.setOpLevel(3, 1.0f);
+
+        std::vector<float> block(256);
+        opx.renderBlock(block.data(), 256);
+        float energy = 0.0f;
+        for (float s : block) energy += s * s;
+        CHECK(energy > 0.5f, "OPx-4 algo %d produces signal (energy=%.2f)", algo, energy);
+    }
+
+    {
+        Opx4Engine opx7;
+        opx7.init(SR);
+        opx7.setAlgorithm(7);
+        opx7.setFrequency(440.0f);
+        opx7.setOpRatio(0, 1.0f);
+        opx7.setOpRatio(1, 2.0f);
+        opx7.setOpRatio(2, 3.0f);
+        opx7.setOpRatio(3, 4.0f);
+        opx7.setOpLevel(0, 0.5f);
+        opx7.setOpLevel(1, 0.5f);
+        opx7.setOpLevel(2, 0.5f);
+        opx7.setOpLevel(3, 0.5f);
+        float s = opx7.processSample();
+        CHECK(std::abs(s) < 1e-4f, "OPx-4 algo 7 start sample near zero (%.4f)", s);
+    }
+
+    {
+        Opx4Engine opxNoFb, opxFb;
+        opxNoFb.init(SR);
+        opxFb.init(SR);
+        opxNoFb.setAlgorithm(0);
+        opxFb.setAlgorithm(0);
+        opxNoFb.setFrequency(220.0f);
+        opxFb.setFrequency(220.0f);
+        opxNoFb.setFeedback(0.0f);
+        opxFb.setFeedback(2.0f);
+
+        bool diffDetected = false;
+        bool stable = true;
+        for (int i = 0; i < 512; ++i) {
+            float s0 = opxNoFb.processSample();
+            float s1 = opxFb.processSample();
+            if (std::abs(s0 - s1) > 0.05f) diffDetected = true;
+            if (!std::isfinite(s1) || std::abs(s1) > 10.0f) stable = false;
+        }
+        CHECK(diffDetected, "OPx-4 feedback changes output spectrum");
+        CHECK(stable, "OPx-4 feedback remains numerically stable");
+    }
+
+    {
+        SolinaEnsemble solina;
+        solina.init(SR);
+        solina.setFormantMode(SolinaFormant::Bypass);
+        solina.setMix(1.0f);
+
+        std::vector<float> l(1024), r(1024);
+        for (int i = 0; i < 1024; ++i) {
+            float s = std::sin(2.0f * M_PI * 440.0f * i / SR);
+            l[i] = s;
+            r[i] = s;
+        }
+        solina.processBlock(l.data(), r.data(), 1024);
+
+        float dot = 0.0f, normL = 0.0f, normR = 0.0f;
+        for (int i = 400; i < 1024; ++i) {
+            dot += l[i] * r[i];
+            normL += l[i] * l[i];
+            normR += r[i] * r[i];
+        }
+        float corr = dot / (std::sqrt(normL * normR) + 1e-9f);
+        CHECK(corr < 0.85f, "Solina stereo decorrelation from 3-phase BBD matrix (corr=%.3f)", corr);
+        CHECK(normL > 1.0f && normR > 1.0f, "Solina outputs active on both channels");
+    }
+
+    {
+        SolinaEnsemble solinaHorn;
+        solinaHorn.init(SR);
+        solinaHorn.setFormantMode(SolinaFormant::Horn);
+        float gain550 = measureToneGain(solinaHorn, 550.0f);
+        float gain100 = measureToneGain(solinaHorn, 100.0f);
+        CHECK(gain550 > gain100 * 1.5f, "Solina Horn formant boosts 550 Hz (gain=%.2f vs %.2f)", gain550, gain100);
+
+        SolinaEnsemble solinaViolin;
+        solinaViolin.init(SR);
+        solinaViolin.setFormantMode(SolinaFormant::Violin);
+        float gain320 = measureToneGain(solinaViolin, 320.0f);
+        float gain100v = measureToneGain(solinaViolin, 100.0f);
+        CHECK(gain320 > gain100v * 1.5f, "Solina Violin formant boosts 320 Hz (gain=%.2f vs %.2f)", gain320, gain100v);
+    }
+}
+
 int main() {
     testPitchAndBandLimit();
     testWavetableMorph();
@@ -427,6 +549,7 @@ int main() {
     testFactoryPresetsAndKnobs();
     testPatchRoundTrip();
     testLegacyV1Models();
+    testOpx4AndSolina();
     if (g_failures) {
         std::printf("%d check(s) failed\n", g_failures);
         return 1;

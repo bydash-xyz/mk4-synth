@@ -550,4 +550,156 @@ template void Voice::renderPhaseDistWave<true>(float*, int, const float*);
 template void Voice::renderPluck<false>(float*, int, const float*);
 template void Voice::renderPluck<true>(float*, int, const float*);
 
+Opx4Engine::Opx4Engine() {
+    SineLut::init();
+    updatePhaseIncs();
+}
+
+void Opx4Engine::init(float sampleRate) {
+    SineLut::init();
+    setSampleRate(sampleRate);
+    reset();
+}
+
+void Opx4Engine::setSampleRate(float sampleRate) {
+    if (sampleRate > 0.0f) {
+        sampleRate_ = sampleRate;
+        updatePhaseIncs();
+    }
+}
+
+void Opx4Engine::reset() {
+    for (auto& op : ops_) {
+        op.phase = 0;
+    }
+    fbZ1_ = 0.0f;
+    fbZ2_ = 0.0f;
+}
+
+void Opx4Engine::setAlgorithm(int algo) {
+    algorithm_ = std::clamp(algo, 0, 7);
+}
+
+void Opx4Engine::setFrequency(float freqHz) {
+    baseFreqHz_ = std::max(0.0f, freqHz);
+    updatePhaseIncs();
+}
+
+void Opx4Engine::setOpRatio(int op, float ratio) {
+    ops_[op & 3].ratio = std::max(0.0f, ratio);
+    updatePhaseIncs();
+}
+
+void Opx4Engine::setOpLevel(int op, float level) {
+    ops_[op & 3].level = std::max(0.0f, level);
+}
+
+void Opx4Engine::setOpDetuneHz(int op, float detuneHz) {
+    ops_[op & 3].detuneHz = detuneHz;
+    updatePhaseIncs();
+}
+
+void Opx4Engine::updatePhaseIncs() {
+    for (int i = 0; i < 4; ++i) {
+        float f = (baseFreqHz_ + ops_[i].detuneHz) * ops_[i].ratio;
+        if (f < 0.0f) f = 0.0f;
+        ops_[i].phaseInc = static_cast<uint32_t>((static_cast<double>(f) / static_cast<double>(sampleRate_)) * 4294967296.0);
+    }
+}
+
+inline float Opx4Engine::computeOp(int opIdx, float modInRadians) {
+    int32_t modPhase = static_cast<int32_t>(modInRadians * (4294967296.0f / TWO_PI_F));
+    uint32_t effPhase = ops_[opIdx].phase + static_cast<uint32_t>(modPhase);
+    float out = SineLut::lookupPhase32(effPhase) * ops_[opIdx].level;
+    ops_[opIdx].phase += ops_[opIdx].phaseInc;
+    return out;
+}
+
+float Opx4Engine::processSample() {
+    float fb = (fbZ1_ + fbZ2_) * 0.5f * feedbackIndex_;
+    float y4 = computeOp(3, fb);
+    fbZ2_ = fbZ1_;
+    fbZ1_ = y4;
+
+    float out = 0.0f;
+    switch (algorithm_) {
+        case 0: {
+            float y3 = computeOp(2, y4);
+            float y2 = computeOp(1, y3);
+            float y1 = computeOp(0, y2);
+            out = y1;
+            break;
+        }
+        case 1: {
+            float y3 = computeOp(2, 0.0f);
+            float y2 = computeOp(1, y4 + y3);
+            float y1 = computeOp(0, y2);
+            out = y1;
+            break;
+        }
+        case 2: {
+            float y3 = computeOp(2, y4);
+            float y2 = computeOp(1, 0.0f);
+            float y1 = computeOp(0, y3 + y2);
+            out = y1;
+            break;
+        }
+        case 3: {
+            float y3 = computeOp(2, y4);
+            float y2 = computeOp(1, y4);
+            float y1 = computeOp(0, y3 + y2);
+            out = y1;
+            break;
+        }
+        case 4: {
+            float y3 = computeOp(2, y4);
+            float y2 = computeOp(1, 0.0f);
+            float y1 = computeOp(0, y2);
+            out = y1 + y3;
+            break;
+        }
+        case 5: {
+            float y3 = computeOp(2, y4);
+            float y2 = computeOp(1, y4);
+            float y1 = computeOp(0, y4);
+            out = y1 + y2 + y3;
+            break;
+        }
+        case 6: {
+            float y3 = computeOp(2, y4);
+            float y2 = computeOp(1, 0.0f);
+            float y1 = computeOp(0, 0.0f);
+            out = y1 + y2 + y3;
+            break;
+        }
+        case 7: {
+            float y3 = computeOp(2, 0.0f);
+            float y2 = computeOp(1, 0.0f);
+            float y1 = computeOp(0, 0.0f);
+            out = y1 + y2 + y3 + y4;
+            break;
+        }
+        default: {
+            float y3 = computeOp(2, y4);
+            float y2 = computeOp(1, y3);
+            float y1 = computeOp(0, y2);
+            out = y1;
+            break;
+        }
+    }
+    return out;
+}
+
+void Opx4Engine::renderBlock(float* out, int n) {
+    for (int i = 0; i < n; ++i) {
+        out[i] = processSample();
+    }
+}
+
+void Opx4Engine::renderBlockAdd(float* acc, int n) {
+    for (int i = 0; i < n; ++i) {
+        acc[i] += processSample();
+    }
+}
+
 } // namespace Synth

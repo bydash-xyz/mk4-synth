@@ -7,6 +7,7 @@
 #include "SineLut.h"
 #include <cstdint>
 #include <vector>
+#include <array>
 
 namespace Synth {
 
@@ -254,5 +255,61 @@ private:
     template <Waveform W>
     void renderSubtractiveWave(float* acc, int n, const float* bend);
 };
+
+struct Opx4Operator {
+    uint32_t phase{0};
+    uint32_t phaseInc{0};
+    float ratio{1.0f};
+    float level{1.0f};
+    float detuneHz{0.0f};
+};
+
+class Opx4Engine {
+public:
+    Opx4Engine();
+
+    void init(float sampleRate);
+    void setSampleRate(float sampleRate);
+    void reset();
+
+    void setAlgorithm(int algo);
+    int getAlgorithm() const { return algorithm_; }
+
+    void setFrequency(float freqHz);
+    float getFrequency() const { return baseFreqHz_; }
+
+    void setOpRatio(int op, float ratio);
+    float getOpRatio(int op) const { return ops_[op & 3].ratio; }
+
+    void setOpLevel(int op, float level);
+    float getOpLevel(int op) const { return ops_[op & 3].level; }
+
+    void setOpDetuneHz(int op, float detuneHz);
+    float getOpDetuneHz(int op) const { return ops_[op & 3].detuneHz; }
+
+    void setFeedback(float fb) { feedbackIndex_ = fb; }
+    float getFeedback() const { return feedbackIndex_; }
+
+    Opx4Operator& getOp(int op) { return ops_[op & 3]; }
+    const Opx4Operator& getOp(int op) const { return ops_[op & 3]; }
+
+    float processSample();
+    void renderBlock(float* out, int n);
+    void renderBlockAdd(float* acc, int n);
+
+private:
+    float sampleRate_{SynthConfig::DEFAULT_SAMPLE_RATE};
+    float baseFreqHz_{440.0f};
+    int algorithm_{0};
+    float feedbackIndex_{0.0f};
+    float fbZ1_{0.0f};
+    float fbZ2_{0.0f};
+    std::array<Opx4Operator, 4> ops_{};
+
+    void updatePhaseIncs();
+    inline float computeOp(int opIdx, float modInRadians);
+};
+
+using Opx4Voice = Opx4Engine;
 
 } // namespace Synth
