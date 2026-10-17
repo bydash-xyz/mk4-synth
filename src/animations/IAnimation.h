@@ -26,6 +26,7 @@ struct AnimationContext {
     uint8_t activeVoiceCount;      // 0..8
     uint8_t voiceNotes[8];         // MIDI note per voice slot (0 if inactive)
     float voiceEnvelopes[8];       // 0.0..1.0 amp envelope level per voice
+    bool monoVoice;                // Mono voice mode: every note plays on voice slot 0
 
     // Last MIDI Event
     uint8_t lastNote;              // 0..127

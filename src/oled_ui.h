@@ -472,6 +472,7 @@ private:
         ctx.isDownbeat = (ctx.currentBeat == 0);
         ctx.metronomeOn = engine.isMetronomeEnabled();
         ctx.activeVoiceCount = static_cast<uint8_t>(engine.getActiveVoiceCount());
+        ctx.monoVoice = engine.getVoiceMode() == Synth::VoiceMode::Monophonic;
         ctx.lastNote = engine.getLastNoteNumber();
         ctx.lastVelocity = engine.getLastVelocity();
         ctx.lastNoteOnMillis = engine.getLastNoteOnMillis();

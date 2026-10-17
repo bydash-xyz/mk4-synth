@@ -17,6 +17,8 @@ namespace HardwareDriver {
 //   Arms go up while the envelope is above 0.55.
 // - Higher notes make the singer stand taller (stretch 0..10 px over notes 36..84).
 // - With the metronome on, sounding singers sway on alternate beats.
+// - In mono voice mode every note plays on voice slot 0, so the singer is picked by note
+//   (note % 8) instead: each key steps to the next singer, and a scale walks along the choir.
 // - After 6 s with no voice sounding they sag, close their eyes and float "z"s.
 class ChoirAnimation : public IAnimation {
 public:
@@ -35,7 +37,8 @@ public:
         zTimer_ = 0.0f;
     }
 
-    void update(float dt, const AnimationContext& ctx) override {
+    void update(float dt, const AnimationContext& rawCtx) override {
+        const AnimationContext& ctx = singerView(rawCtx);
         uint8_t hits[8];
         const int n = tracker_.update(ctx, hits);
         for (int k = 0; k < n; ++k) {
@@ -100,7 +103,8 @@ public:
         zCount_ = w;
     }
 
-    void render(U8G2& u8g2, const AnimationContext& ctx) override {
+    void render(U8G2& u8g2, const AnimationContext& rawCtx) override {
+        const AnimationContext& ctx = singerView(rawCtx);
         AnimDraw::hspan(u8g2, 0, 127, 62);
         const int sway = (ctx.metronomeOn && ctx.activeVoiceCount > 0) ? ((ctx.currentBeat % 2) ? 1 : -1) : 0;
         const bool asleep = isAsleep();
@@ -194,7 +198,27 @@ private:
     // JS Math.round (halves round toward +infinity)
     static int rnd(float v) { return static_cast<int>(std::floor(v + 0.5f)); }
 
+    // Per-singer view of the voices. Poly: singer v is voice slot v. Mono: each sounding slot
+    // moves to singer note % 8, so changing notes hands the envelope to another singer and
+    // StrikeTracker sees it rise there as a fresh strike.
+    const AnimationContext& singerView(const AnimationContext& ctx) {
+        if (!ctx.monoVoice) return ctx;
+        view_ = ctx;
+        for (int v = 0; v < VOICES; ++v) { view_.voiceNotes[v] = 0; view_.voiceEnvelopes[v] = 0.0f; }
+        for (int v = 0; v < VOICES; ++v) {
+            const float env = ctx.voiceEnvelopes[v];
+            if (env <= 0.0f) continue;
+            const int s = ctx.voiceNotes[v] % VOICES;
+            if (env > view_.voiceEnvelopes[s]) {
+                view_.voiceEnvelopes[s] = env;
+                view_.voiceNotes[s] = ctx.voiceNotes[v];
+            }
+        }
+        return view_;
+    }
+
     AnimUtil::StrikeTracker tracker_;
+    AnimationContext view_{};
     AnimUtil::XorShift32 rng_;
     Singer singers_[VOICES] = {};
     FloatGlyph notes_[MAX_NOTES] = {};

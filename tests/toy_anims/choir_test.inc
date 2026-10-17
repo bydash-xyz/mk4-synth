@@ -65,6 +65,37 @@ void test_choir() {
         assert(litPixels(arpd, 0, 16, 127, 61) > 0);
     }
 
+    // Mono voice mode (PT-10 presets): every note lands on voice slot 0, but each key hops its
+    // own singer (note % 8) rather than always the leftmost one
+    {
+        ChoirAnimation mono;
+        mono.init(); prime(mono);
+        ToyVoices monoTv;
+        monoTv.ctx.monoVoice = true;
+        const uint8_t keys[3] = {60, 62, 65}; // singers 4, 6, 1
+        for (uint8_t key : keys) {
+            monoTv.noteOn(key, 120);
+            run(mono, monoTv, 0.1f);
+            const int singer = key % 8;
+            assert(mono.getHop(singer) < -2.0f);
+            for (int v = 0; v < 8; ++v) if (v != singer) assert(mono.getHop(v) > -2.0f);
+            monoTv.noteOff(key);
+            run(mono, monoTv, 0.8f); // released and landed
+            assert(mono.getMouth(singer) < 0.05f);
+            for (int v = 0; v < 8; ++v) assert(mono.getHop(v) == 0.0f);
+        }
+        // Repeating a key re-hops the same singer
+        monoTv.noteOn(60, 120);
+        run(mono, monoTv, 0.1f);
+        assert(mono.getHop(4) < -2.0f);
+        assert(mono.getHop(0) == 0.0f);
+        // Legato: slot 0 changes note without retriggering; the new note's singer still hops
+        run(mono, monoTv, 0.8f);
+        monoTv.v[0].note = 67;
+        run(mono, monoTv, 0.1f);
+        assert(mono.getHop(3) < -2.0f && mono.getHop(4) == 0.0f);
+    }
+
     U8G2 d;
     d.begin();
     anim.render(d, tv.ctx);
