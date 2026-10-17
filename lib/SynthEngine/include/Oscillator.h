@@ -125,4 +125,49 @@ inline float Oscillator::process() {
     }
 }
 
+inline float polyBlepResidual(float t) {
+    if (t < 0.0f || t >= 1.0f) return 0.0f;
+    return t + t - t * t - 1.0f;
+}
+
+inline float process_hard_sync_saw(float* master_phase, float master_inc, float* slave_phase, float slave_inc) {
+    *master_phase += master_inc;
+    *slave_phase += slave_inc;
+
+    float out = (2.0f * (*slave_phase)) - 1.0f;
+
+    if (*slave_phase >= 1.0f) {
+        *slave_phase -= 1.0f;
+        out = (2.0f * (*slave_phase)) - 1.0f;
+        out -= polyBlepResidual(*slave_phase / slave_inc);
+    }
+
+    if (*master_phase >= 1.0f) {
+        *master_phase -= 1.0f;
+        float frac_master = *master_phase / master_inc;
+        float slave_at_reset = *slave_phase - (frac_master * slave_inc);
+        if (slave_at_reset < 0.0f) slave_at_reset += 1.0f;
+        float discontinuity_mag = slave_at_reset;
+        *slave_phase = frac_master * slave_inc;
+        out = (2.0f * (*slave_phase)) - 1.0f;
+        out -= discontinuity_mag * polyBlepResidual(frac_master);
+    }
+
+    return out;
+}
+
+inline float ring_modulate(float osc1_out, float osc2_out, float* dc_z1, float* dc_in1, float R = 0.995f) {
+    float prod = osc1_out * osc2_out;
+    float dc_out = prod - *dc_in1 + (R * (*dc_z1));
+    *dc_in1 = prod;
+    *dc_z1 = dc_out;
+    return dc_out;
+}
+
+inline float cross_modulate(float osc1_inc, float osc2_out, float xmod_depth) {
+    float warped = osc1_inc + (osc2_out * xmod_depth * osc1_inc);
+    return std::clamp(warped, 0.0f, 0.48f);
+}
+
 } // namespace Synth
+

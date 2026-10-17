@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Parameters.h"
+#include <algorithm>
 #include <cmath>
 
 namespace Synth {
@@ -161,4 +162,15 @@ inline float LadderFilter::process(float in) {
     return y4 * makeup_;
 }
 
+inline float tube_saturate_sample(float x, float drive, float bias, float* dc_z1, float* dc_in1) {
+    float xd = std::clamp((x * drive) + bias, -3.0f, 3.0f);
+    float xd2 = xd * xd;
+    float y = (xd * (27.0f + xd2)) * ParameterScaler::fastRecip(27.0f + 9.0f * xd2);
+    float dc_out = y - *dc_in1 + (0.996f * (*dc_z1));
+    *dc_in1 = y;
+    *dc_z1 = dc_out;
+    return dc_out;
+}
+
 } // namespace Synth
+
