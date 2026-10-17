@@ -538,7 +538,170 @@ static void testFilterArithmeticMatchesReference() {
     }
 }
 
+static void testHardSyncSawSweep() {
+    std::printf("Subtractive expansions: hard sync saw sweep\n");
+    const float masterHz = 220.0f;
+    const float masterInc = masterHz / SR;
+    const int n = static_cast<int>(SR);
+
+    float mBlep = 0.0f, sBlep = 0.0f;
+    float mNaive = 0.0f, sNaive = 0.0f;
+
+    std::vector<float> blepOut(n);
+    std::vector<float> naiveOut(n);
+
+    for (int i = 0; i < n; ++i) {
+        const float slaveHz = 220.0f + (4000.0f - 220.0f) * (static_cast<float>(i) / static_cast<float>(n));
+        const float slaveInc = slaveHz / SR;
+
+        blepOut[i] = process_hard_sync_saw(&mBlep, masterInc, &sBlep, slaveInc);
+
+        mNaive += masterInc;
+        sNaive += slaveInc;
+        if (sNaive >= 1.0f) sNaive -= 1.0f;
+        if (mNaive >= 1.0f) {
+            mNaive -= 1.0f;
+            const float fracMaster = mNaive / masterInc;
+            sNaive = fracMaster * slaveInc;
+        }
+        naiveOut[i] = (2.0f * sNaive) - 1.0f;
+
+        CHECK(std::isfinite(blepOut[i]), "sample %d non-finite: %f", i, blepOut[i]);
+    }
+
+    const float pk = peak(blepOut);
+    CHECK(pk <= 1.05f, "hard sync saw peak out of bounds: %.4f", pk);
+
+    double blepDiffSum = 0.0;
+    double naiveDiffSum = 0.0;
+    for (int i = 1; i < n; ++i) {
+        const float db = blepOut[i] - blepOut[i - 1];
+        const float dn = naiveOut[i] - naiveOut[i - 1];
+        blepDiffSum += db * db;
+        naiveDiffSum += dn * dn;
+    }
+    const float blepDiffRms = static_cast<float>(std::sqrt(blepDiffSum / (n - 1)));
+    const float naiveDiffRms = static_cast<float>(std::sqrt(naiveDiffSum / (n - 1)));
+    CHECK(blepDiffRms < naiveDiffRms, "BLEP diff RMS %.4f not suppressing aliasing vs naive %.4f",
+          blepDiffRms, naiveDiffRms);
+}
+
+static void testTubeSaturation() {
+    std::printf("Subtractive expansions: tube saturation harmonics and DC offset\n");
+    float dcZ1 = 0.0f, dcIn1 = 0.0f;
+    const float drive = 2.0f;
+    const float bias = 0.5f;
+    const int n = static_cast<int>(SR);
+
+    for (int i = 0; i < n; ++i) {
+        const float x = std::sin(2.0f * 3.14159265358979323846f * 1000.0f * (static_cast<float>(i) / SR));
+        tube_saturate_sample(x, drive, bias, &dcZ1, &dcIn1);
+    }
+
+    std::vector<float> y(n);
+    double dcSum = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const float x = std::sin(2.0f * 3.14159265358979323846f * 1000.0f * (static_cast<float>(n + i) / SR));
+        y[i] = tube_saturate_sample(x, drive, bias, &dcZ1, &dcIn1);
+        dcSum += y[i];
+    }
+
+    const float dcOffset = static_cast<float>(std::abs(dcSum / n));
+    CHECK(dcOffset < 0.000316f, "DC offset %.6f exceeds -70 dBFS limit", dcOffset);
+
+    auto harmonicMag = [&](int freqHz) {
+        double re = 0.0, im = 0.0;
+        for (int i = 0; i < n; ++i) {
+            const float angle = 2.0f * 3.14159265358979323846f * static_cast<float>(freqHz * i) / SR;
+            re += static_cast<double>(y[i]) * std::cos(angle);
+            im += static_cast<double>(y[i]) * std::sin(angle);
+        }
+        re *= 2.0 / n;
+        im *= 2.0 / n;
+        return static_cast<float>(std::sqrt(re * re + im * im));
+    };
+
+    const float h2 = harmonicMag(2000);
+    const float h3 = harmonicMag(3000);
+    CHECK(h2 > 0.05f, "2nd harmonic missing or too weak: %.4f", h2);
+    CHECK(h3 > 0.05f, "3rd harmonic missing or too weak: %.4f", h3);
+}
+
+static void testPitchEnvelope808() {
+    std::printf("Subtractive expansions: 808 pitch envelope\n");
+    PitchEnvelope808 env;
+    env.init(SR);
+    env.setClickTimeMs(5.0f);
+    env.setBodyTimeMs(100.0f);
+
+    env.trigger();
+    CHECK(env.isActive(), "envelope should be active after trigger");
+    CHECK(env.getStage() == PitchEnvelope808::Stage::Click, "envelope should start in Click stage");
+
+    const float first = env.process();
+    CHECK(std::abs(first - 36.0f) < 1e-4f, "initial pitch should be +36 semitones, got %.4f", first);
+
+    float last = first;
+    int samplesToSeven = 0;
+    const int maxClickSamples = static_cast<int>(15.0f * 0.001f * SR);
+    for (int i = 1; i < maxClickSamples; ++i) {
+        float val = env.process();
+        CHECK(val <= last, "pitch should decay monotonically during click: %f > %f", val, last);
+        last = val;
+        if (env.getStage() == PitchEnvelope808::Stage::Body) {
+            samplesToSeven = i;
+            break;
+        }
+    }
+
+    const float clickDurationMs = static_cast<float>(samplesToSeven) * 1000.0f / SR;
+    CHECK(clickDurationMs >= 4.0f && clickDurationMs <= 6.0f,
+          "click stage reached +7 semitones in %.2f ms (expected ~5 ms)", clickDurationMs);
+
+    int samplesToZero = 0;
+    const int maxBodySamples = static_cast<int>(300.0f * 0.001f * SR);
+    for (int i = 0; i < maxBodySamples; ++i) {
+        float val = env.process();
+        CHECK(val <= last, "pitch should decay monotonically during body: %f > %f", val, last);
+        last = val;
+        if (!env.isActive()) {
+            samplesToZero = i;
+            break;
+        }
+    }
+
+    CHECK(!env.isActive(), "envelope should be idle after body decay");
+    CHECK(env.process() == 0.0f, "envelope should output 0 semitones when idle");
+
+    const float bodyDurationMs = static_cast<float>(samplesToZero) * 1000.0f / SR;
+    CHECK(bodyDurationMs >= 70.0f && bodyDurationMs <= 130.0f,
+          "body stage settled in %.2f ms (expected ~100 ms)", bodyDurationMs);
+}
+
+static void testRingModAndCrossMod() {
+    std::printf("Subtractive expansions: ring modulation and cross modulation\n");
+    float dcZ1 = 0.0f, dcIn1 = 0.0f;
+    for (int i = 0; i < 44100; ++i) {
+        float s1 = std::sin(2.0f * 3.14159265f * 440.0f * i / SR);
+        float s2 = std::sin(2.0f * 3.14159265f * 330.0f * i / SR);
+        float out = ring_modulate(s1, s2, &dcZ1, &dcIn1);
+        CHECK(std::isfinite(out), "ring mod non-finite: %f", out);
+    }
+
+    const float baseInc = 0.01f;
+    const float mod = cross_modulate(baseInc, 1.0f, 0.5f);
+    CHECK(mod > baseInc, "positive mod should increase phase inc: %f", mod);
+    const float clamped = cross_modulate(baseInc, 100.0f, 10.0f);
+    CHECK(clamped == 0.48f, "cross mod should clamp to 0.48: %f", clamped);
+    const float clampedMin = cross_modulate(baseInc, -100.0f, 10.0f);
+    CHECK(clampedMin == 0.0f, "cross mod should clamp to 0.0: %f", clampedMin);
+}
+
 int main() {
+    testHardSyncSawSweep();
+    testTubeSaturation();
+    testPitchEnvelope808();
+    testRingModAndCrossMod();
     testFilterArithmeticMatchesReference();
     testBlockRenderMatchesPerSample();
     testFilterSaturationIsSmooth();

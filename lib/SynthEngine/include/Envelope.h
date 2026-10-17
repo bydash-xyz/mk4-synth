@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Parameters.h"
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 namespace Synth {
@@ -108,4 +110,109 @@ inline float Envelope::process() {
     return currentLevel_;
 }
 
+enum class PitchEnvelopeStage : uint8_t {
+    Idle = 0,
+    Click = 1,
+    Body = 2
+};
+
+class PitchEnvelope808 {
+public:
+    using Stage = PitchEnvelopeStage;
+
+    PitchEnvelope808() {
+        updateRates();
+    }
+
+    void init(float sampleRate) {
+        setSampleRate(sampleRate);
+        reset();
+    }
+
+    void setSampleRate(float sampleRate) {
+        if (sampleRate > 0.0f) {
+            sampleRate_ = sampleRate;
+            updateRates();
+        }
+    }
+
+    void setClickTimeMs(float clickMs) {
+        clickMs_ = std::clamp(clickMs, 0.5f, 50.0f);
+        updateRates();
+    }
+
+    void setBodyTimeMs(float bodyMs) {
+        bodyMs_ = std::clamp(bodyMs, 5.0f, 1000.0f);
+        updateRates();
+    }
+
+    float getClickTimeMs() const { return clickMs_; }
+    float getBodyTimeMs() const { return bodyMs_; }
+
+    void trigger() {
+        currentSemitones_ = 36.0f;
+        stage_ = PitchEnvelopeStage::Click;
+    }
+
+    void noteOn() {
+        trigger();
+    }
+
+    void reset() {
+        currentSemitones_ = 0.0f;
+        stage_ = PitchEnvelopeStage::Idle;
+    }
+
+    float process() {
+        float out = currentSemitones_;
+        switch (stage_) {
+            case PitchEnvelopeStage::Idle:
+                currentSemitones_ = 0.0f;
+                out = 0.0f;
+                break;
+
+            case PitchEnvelopeStage::Click:
+                currentSemitones_ += (0.0f - currentSemitones_) * clickCoef_;
+                if (currentSemitones_ <= 7.0f) {
+                    currentSemitones_ = 7.0f;
+                    stage_ = PitchEnvelopeStage::Body;
+                }
+                break;
+
+            case PitchEnvelopeStage::Body:
+                currentSemitones_ += (-0.01f - currentSemitones_) * bodyCoef_;
+                if (currentSemitones_ <= 0.001f) {
+                    currentSemitones_ = 0.0f;
+                    stage_ = PitchEnvelopeStage::Idle;
+                }
+                break;
+        }
+        return out;
+    }
+
+    PitchEnvelopeStage getStage() const { return stage_; }
+    bool isActive() const { return stage_ != PitchEnvelopeStage::Idle; }
+    float getSemitones() const { return currentSemitones_; }
+
+private:
+    float sampleRate_{SynthConfig::DEFAULT_SAMPLE_RATE};
+    float clickMs_{5.0f};
+    float bodyMs_{100.0f};
+
+    float clickCoef_{0.01f};
+    float bodyCoef_{0.001f};
+
+    float currentSemitones_{0.0f};
+    PitchEnvelopeStage stage_{PitchEnvelopeStage::Idle};
+
+    void updateRates() {
+        float samplesClick = std::max(1.0f, (clickMs_ * 0.001f) * sampleRate_);
+        clickCoef_ = 1.0f - std::exp(std::log(7.0f / 36.0f) / samplesClick);
+
+        float samplesBody = std::max(1.0f, (bodyMs_ * 0.001f) * sampleRate_);
+        bodyCoef_ = 1.0f - std::exp(-6.5f / samplesBody);
+    }
+};
+
 } // namespace Synth
+
