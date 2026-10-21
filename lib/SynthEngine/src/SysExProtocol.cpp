@@ -567,6 +567,7 @@ static const ParamDef PATCH_PARAMS[] = {
     FLOAT_PARAM(KeyClick,        Linear, 0.0f,  1.0f,     timbre.keyClick),
     DRAWBAR_PARAM(0), DRAWBAR_PARAM(1), DRAWBAR_PARAM(2), DRAWBAR_PARAM(3), DRAWBAR_PARAM(4),
     DRAWBAR_PARAM(5), DRAWBAR_PARAM(6), DRAWBAR_PARAM(7), DRAWBAR_PARAM(8),
+    ENUM_PARAM (OpxAlgo,         uint8_t, 8, timbre.opxAlgo),
 };
 
 #undef FLOAT_PARAM

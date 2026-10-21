@@ -343,6 +343,8 @@ private:
 
     // Effects
     StereoChorus chorus_;
+    SolinaEnsemble solinaEnsemble_;
+    float hypePumpPhase_{0.0f};
     // Static render scratch (2 x 8 KB): heap blocks > 4 KB would land in PSRAM on ESP32-S3
     std::array<float, 2048> tempL_{};
     std::array<float, 2048> tempR_{};

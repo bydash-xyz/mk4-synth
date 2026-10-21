@@ -45,6 +45,10 @@ public:
     EnvelopeState getState() const { return state_; }
     bool isActive() const { return state_ != EnvelopeState::Idle; }
     float getCurrentValue() const { return currentLevel_; }
+    float getAttackMs() const { return attackMs_; }
+    float getDecayMs() const { return decayMs_; }
+    float getSustainLevel() const { return sustainLevel_; }
+    float getReleaseMs() const { return releaseMs_; }
 
 private:
     float sampleRate_{SynthConfig::DEFAULT_SAMPLE_RATE};

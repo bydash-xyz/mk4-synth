@@ -347,8 +347,8 @@ function build() {
   }
   applyEngine();
   const slot = $('slot');
-  // User slots 24..32 (ADR-0007)
-  for (let s = 24; s <= 32; s++) slot.append(el('option', { value: s, text: 'Slot ' + s + '  U' + String(s - 23).padStart(2, '0') }));
+  // User slots 37..45 (ADR-0007)
+  for (let s = 37; s <= 45; s++) slot.append(el('option', { value: s, text: 'Slot ' + s + '  U' + String(s - 36).padStart(2, '0') }));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -421,7 +421,7 @@ function onMessage(e) {
   pending = null;
   const st = d[5];
   if (st === 0) say(slot
-    ? `Saved to slot ${slot} (U${String(slot - 23).padStart(2, '0')}). Select it on the synth to play it.`
+    ? `Saved to slot ${slot} (U${String(slot - 36).padStart(2, '0')}). Select it on the synth to play it.`
     : 'Loaded on the synth (not saved). Play the MK4 to hear it through the synth\'s speaker.');
   else if (st === 4) say('NACK: unsupported. The firmware predates PatchDumpV2 (ADR-0006).');
   else say('NACK: ' + (NACK[st] ?? 'status ' + st) + '.');

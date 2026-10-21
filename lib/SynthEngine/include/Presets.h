@@ -39,31 +39,47 @@ enum class SynthModel : uint8_t {
     // Factory Models: Additive Hammond Drawbar Organ (Slots #22..#23)
     B3_Jazz           = 21, // Slot #22: Hammond B-3 888000000, third-harmonic percussion
     B3_Gospel         = 22, // Slot #23: Hammond B-3 888808008 with fast Leslie
-    // User Customizable Slots (Slots #24..#32)
-    User_01           = 23, // Slot #24 (Default User Slot)
-    User_02           = 24, // Slot #25
-    User_03           = 25, // Slot #26
-    User_04           = 26, // Slot #27
-    User_05           = 27, // Slot #28
-    User_06           = 28, // Slot #29
-    User_07           = 29, // Slot #30
-    User_08           = 30, // Slot #31
-    User_09           = 31, // Slot #32
-    Count             = 32,
+    // Factory Models: Group 2 Subtractive Expansions (Slots #24..#29)
+    Odyssey           = 23, // Slot #24: ARP Odyssey duophonic lead (hard sync saw + ring mod)
+    VintageJup        = 24, // Slot #25: Roland Jupiter-8 cross-modulated poly synth
+    TubeSynth         = 25, // Slot #26: Tube-saturated poly synth (asymmetric triode)
+    SubFactory        = 26, // Slot #27: 808 sub bass (click+body pitch envelope + tube drive)
+    Memorymoog        = 27, // Slot #28: 3-oscillator detuned ladder poly brass
+    Iona              = 28, // Slot #29: SH-101 acid/electro mono bass
+    // Factory Models: Group 3 New DSP Engines (Slots #30..#31)
+    OPx4              = 29, // Slot #30: 4-operator FM synth (8 algorithms)
+    Solina            = 30, // Slot #31: ARP Solina String Ensemble (formants + 3-phase chorus)
+    // Factory Models: Group 4 Caricature Engines (Slots #32..#36)
+    StagePiano        = 31, // Slot #32: Commuted waveguide acoustic grand piano
+    StudioStrings     = 32, // Slot #33: Bowed strings with rosin noise + violin body
+    FabricXl          = 33, // Slot #34: Dual wavetable + chime & breath pad
+    Mariana           = 34, // Slot #35: Dual-path sub + tube mid bass
+    Hype              = 35, // Slot #36: Hypersaw + comb stereoizer + pump envelope
+    // User Customizable Slots (Slots #37..#45)
+    User_01           = 36, // Slot #37 (Default User Slot)
+    User_02           = 37, // Slot #38
+    User_03           = 38, // Slot #39
+    User_04           = 39, // Slot #40
+    User_05           = 40, // Slot #41
+    User_06           = 41, // Slot #42
+    User_07           = 42, // Slot #43
+    User_08           = 43, // Slot #44
+    User_09           = 44, // Slot #45
+    Count             = 45,
     User              = User_01, // Backwards-compatible alias
     CasioPT10         = CasioPT10_Piano // Backwards-compatible alias
 };
 
-constexpr size_t FACTORY_PRESET_COUNT = 23;
+constexpr size_t FACTORY_PRESET_COUNT = 36;
 constexpr size_t USER_PRESET_COUNT    = 9;
-constexpr size_t TOTAL_PRESET_COUNT   = 32;
+constexpr size_t TOTAL_PRESET_COUNT   = 45;
 
 constexpr uint8_t FACTORY_SLOT_START  = 1;
-constexpr uint8_t FACTORY_SLOT_END    = 23;
-constexpr uint8_t USER_SLOT_START     = 24;
-constexpr uint8_t USER_SLOT_END       = 32;
-constexpr uint8_t TOTAL_SLOT_COUNT    = 32;
-constexpr uint8_t USER_PRESET_SLOT    = USER_SLOT_START; // Slot #24 (Default User Slot)
+constexpr uint8_t FACTORY_SLOT_END    = 36;
+constexpr uint8_t USER_SLOT_START     = 37;
+constexpr uint8_t USER_SLOT_END       = 45;
+constexpr uint8_t TOTAL_SLOT_COUNT    = 45;
+constexpr uint8_t USER_PRESET_SLOT    = USER_SLOT_START; // Slot #37 (Default User Slot)
 
 inline bool isUserSlot(uint8_t slot) {
     return slot >= USER_SLOT_START && slot <= USER_SLOT_END;
@@ -170,6 +186,7 @@ struct Preset {
 // Synthesis engine a preset plays on. FM factory presets predate the engineMode field being sent in
 // legacy dumps, so their model decides; everything else carries its engine in engineMode.
 inline EngineMode presetEngineMode(const Preset& p) {
+    if (p.engineMode == EngineMode::StageEp) return EngineMode::StageEp;
     if (isFmModel(p.model)) return EngineMode::FM;
     return static_cast<uint8_t>(p.engineMode) < static_cast<uint8_t>(EngineMode::Count) ? p.engineMode
                                                                                         : EngineMode::Subtractive;
@@ -211,56 +228,77 @@ struct ModelVoicing {
     bool    oscKeySync;     // Restart oscillator phase on notes started from silence (digital/FM)
     float   analogDrift;    // Per-note pitch / cutoff variation (0 = digital-stable)
     uint8_t voices;         // Original polyphony (0 = engine maximum)
+    SubModMode subMod{SubModMode::None};
 };
 
 inline ModelVoicing getModelVoicing(SynthModel model) {
     switch (model) {
-        //                                  filter                 keyTrk vel   accent sync   drift voices
-        case SynthModel::Juno60:   return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.3f, 6}; // DCOs: stable pitch
-        case SynthModel::Minimoog: return {FilterModel::Ladder24, 0.33f, 0.0f, false, false, 1.0f, 4};
-        case SynthModel::Prophet5: return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.8f, 5}; // CEM3320 4-pole
-        case SynthModel::TB303:    return {FilterModel::Ladder24, 0.0f,  0.0f, true,  false, 0.3f, 1};
-        case SynthModel::CS80:     return {FilterModel::Svf12,    0.5f,  0.7f, false, false, 0.8f, 8};
-        case SynthModel::OBXa:     return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.8f, 8};
+        //                                  filter                 keyTrk vel   accent sync   drift voices subMod
+        case SynthModel::Juno60:   return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.3f, 6, SubModMode::None}; // DCOs: stable pitch
+        case SynthModel::Minimoog: return {FilterModel::Ladder24, 0.33f, 0.0f, false, false, 1.0f, 4, SubModMode::None};
+        case SynthModel::Prophet5: return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.8f, 5, SubModMode::None}; // CEM3320 4-pole
+        case SynthModel::TB303:    return {FilterModel::Ladder24, 0.0f,  0.0f, true,  false, 0.3f, 1, SubModMode::None};
+        case SynthModel::CS80:     return {FilterModel::Svf12,    0.5f,  0.7f, false, false, 0.8f, 8, SubModMode::None};
+        case SynthModel::OBXa:     return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.8f, 8, SubModMode::None};
         case SynthModel::CasioPT10_Piano:
         case SynthModel::CasioPT10_Fantasy:
         case SynthModel::CasioPT10_Violin:
         case SynthModel::CasioPT10_Flute:
                                    // The real PT-10 is monophonic: the presets default to Mono (last-note priority).
                                    // No voice cap here, so the PolyMode knob (CC 92) can open up the engine maximum.
-                                   return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 0};
+                                   return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 0, SubModMode::None};
         case SynthModel::DX_EPiano:
         case SynthModel::FM_CrystalTines:
         case SynthModel::FM_WarmRhodes:
         case SynthModel::FM_Clavinet:
         case SynthModel::FM_DrawbarOrgan:
-                                   return {FilterModel::Svf12,    0.0f,  1.0f, false, true,  0.0f, 8};
+                                   return {FilterModel::Svf12,    0.0f,  1.0f, false, true,  0.0f, 8, SubModMode::None};
         // PPG Wave 2.3: digital oscillators into an SSM2044 4-pole VCF; Microwave: CEM3387 4-pole
-        case SynthModel::PPG_Wave: return {FilterModel::Ladder24, 0.5f,  0.5f, false, true,  0.0f, 8};
-        case SynthModel::WT_VoxPad:return {FilterModel::Ladder24, 0.5f,  0.6f, false, true,  0.0f, 8};
+        case SynthModel::PPG_Wave: return {FilterModel::Ladder24, 0.5f,  0.5f, false, true,  0.0f, 8, SubModMode::None};
+        case SynthModel::WT_VoxPad:return {FilterModel::Ladder24, 0.5f,  0.6f, false, true,  0.0f, 8, SubModMode::None};
         // CZ-101: no filter, no velocity; 8 voices with one line per note, 4 with two (CZ RESO)
-        case SynthModel::CZ_Bass:  return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 8};
-        case SynthModel::CZ_Reso:  return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 4};
+        case SynthModel::CZ_Bass:  return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 8, SubModMode::None};
+        case SynthModel::CZ_Reso:  return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 4, SubModMode::None};
         // Plucked strings: velocity sets pick strength (brightness and level)
         case SynthModel::KS_Guitar:
-        case SynthModel::KS_Koto:  return {FilterModel::Svf12,    0.0f,  1.0f, false, true,  0.0f, 0};
+        case SynthModel::KS_Koto:  return {FilterModel::Svf12,    0.0f,  1.0f, false, true,  0.0f, 0, SubModMode::None};
         // Tonewheel organ: no velocity, stable pitch
         case SynthModel::B3_Jazz:
-        case SynthModel::B3_Gospel:return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 8};
+        case SynthModel::B3_Gospel:return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 8, SubModMode::None};
+        case SynthModel::Odyssey:       return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.6f, 1, SubModMode::HardSyncRing};
+        case SynthModel::VintageJup:    return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.5f, 8, SubModMode::CrossMod};
+        case SynthModel::TubeSynth:     return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.5f, 8, SubModMode::TubeDrive};
+        case SynthModel::SubFactory:    return {FilterModel::Ladder24, 0.0f,  0.0f, false, true,  0.0f, 1, SubModMode::Sub808};
+        case SynthModel::Memorymoog:    return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 1.2f, 6, SubModMode::None};
+        case SynthModel::Iona:          return {FilterModel::Ladder24, 0.5f,  0.0f, false, false, 0.2f, 1, SubModMode::None};
+        case SynthModel::OPx4:          return {FilterModel::Svf12,    0.0f,  1.0f, false, true,  0.0f, 8, SubModMode::None};
+        case SynthModel::Solina:        return {FilterModel::Svf12,    0.0f,  0.0f, false, true,  0.0f, 8, SubModMode::None};
+        case SynthModel::StagePiano:    return {FilterModel::Svf12,    0.0f,  1.0f, false, true,  0.0f, 8, SubModMode::None};
+        case SynthModel::StudioStrings: return {FilterModel::Svf12,    0.5f,  0.7f, false, false, 0.3f, 8, SubModMode::None};
+        case SynthModel::FabricXl:      return {FilterModel::Ladder24, 0.5f,  0.7f, false, true,  0.0f, 8, SubModMode::None};
+        case SynthModel::Mariana:       return {FilterModel::Ladder24, 0.3f,  0.0f, false, true,  0.1f, 1, SubModMode::None};
+        case SynthModel::Hype:          return {FilterModel::Ladder24, 0.5f,  0.8f, false, false, 0.4f, 8, SubModMode::None};
         default:                   // Generic user patch
-                                   return {FilterModel::Ladder24, 0.5f,  0.5f, false, false, 0.5f, 0};
+                                   return {FilterModel::Ladder24, 0.5f,  0.5f, false, false, 0.5f, 0, SubModMode::None};
     }
 }
 
 // Voicing a generic patch (no factory voicing) takes on each engine (Count = generic subtractive)
 inline SynthModel defaultVoicingForEngine(EngineMode mode) {
     switch (mode) {
-        case EngineMode::FM:        return SynthModel::DX_EPiano;
-        case EngineMode::Wavetable: return SynthModel::PPG_Wave;
-        case EngineMode::PhaseDist: return SynthModel::CZ_Bass;
-        case EngineMode::Pluck:     return SynthModel::KS_Guitar;
-        case EngineMode::Additive:  return SynthModel::B3_Jazz;
-        default:                    return SynthModel::Count;
+        case EngineMode::FM:            return SynthModel::DX_EPiano;
+        case EngineMode::Wavetable:     return SynthModel::PPG_Wave;
+        case EngineMode::PhaseDist:     return SynthModel::CZ_Bass;
+        case EngineMode::Pluck:         return SynthModel::KS_Guitar;
+        case EngineMode::Additive:      return SynthModel::B3_Jazz;
+        case EngineMode::Opx4:          return SynthModel::OPx4;
+        case EngineMode::StagePiano:    return SynthModel::StagePiano;
+        case EngineMode::StageEp:       return SynthModel::FM_WarmRhodes;
+        case EngineMode::StudioStrings: return SynthModel::StudioStrings;
+        case EngineMode::FabricXl:      return SynthModel::FabricXl;
+        case EngineMode::Mariana:       return SynthModel::Mariana;
+        case EngineMode::Hype:          return SynthModel::Hype;
+        default:                        return SynthModel::Count;
     }
 }
 
@@ -292,7 +330,7 @@ inline float getModelLevelDb(SynthModel model) {
         case SynthModel::CasioPT10_Flute:   return  -3.4f;
         case SynthModel::DX_EPiano:         return  -3.9f;
         case SynthModel::FM_CrystalTines:   return  -5.9f;
-        case SynthModel::FM_WarmRhodes:     return  -0.9f;
+        case SynthModel::FM_WarmRhodes:     return   3.4f;
         case SynthModel::FM_Clavinet:       return   0.1f;
         case SynthModel::FM_DrawbarOrgan:   return  -2.2f;
         case SynthModel::PPG_Wave:          return   5.6f;
@@ -303,6 +341,19 @@ inline float getModelLevelDb(SynthModel model) {
         case SynthModel::KS_Koto:           return   5.6f;
         case SynthModel::B3_Jazz:           return  -0.7f;
         case SynthModel::B3_Gospel:         return  -0.7f;
+        case SynthModel::Odyssey:           return   2.9f;
+        case SynthModel::VintageJup:        return   1.1f;
+        case SynthModel::TubeSynth:         return  -3.1f;
+        case SynthModel::SubFactory:        return   2.7f;
+        case SynthModel::Memorymoog:        return  -0.2f;
+        case SynthModel::Iona:              return   6.9f;
+        case SynthModel::OPx4:              return  -4.3f;
+        case SynthModel::Solina:            return  -2.4f;
+        case SynthModel::StagePiano:        return   3.7f;
+        case SynthModel::StudioStrings:     return  -2.1f;
+        case SynthModel::FabricXl:          return   3.1f;
+        case SynthModel::Mariana:           return  -6.1f;
+        case SynthModel::Hype:              return   7.0f;
         default:                            return  0.0f; // Generic user patch
     }
 }
@@ -713,7 +764,7 @@ inline const std::array<Preset, static_cast<size_t>(SynthModel::Count)>& getPres
                 .ccs      = {76, 80, 81, 82, 83, 84, 85, 7},
                 .defaults = {72, 23, 27, 48, 31, 16, 42, 100},
             },
-            .engineMode = EngineMode::FM,
+            .engineMode = EngineMode::StageEp,
             .modRatio = 1.0f,
             .modDepth = 1.50f, // modDepth (mellow body)
             .modFeedback = 0.35f, // modFeedback (warmth)
@@ -937,16 +988,348 @@ inline const std::array<Preset, static_cast<size_t>(SynthModel::Count)>& getPres
             return p;
         }(),
 
-        // 23..31. User Customizable Slots (Slots #24..#32)
-        makeDefaultUserPreset(SynthModel::User_01, "USER 01", "Custom User Defined Patch (Slot #24 NVS Storage)"),
-        makeDefaultUserPreset(SynthModel::User_02, "USER 02", "Custom User Defined Patch (Slot #25 NVS Storage)"),
-        makeDefaultUserPreset(SynthModel::User_03, "USER 03", "Custom User Defined Patch (Slot #26 NVS Storage)"),
-        makeDefaultUserPreset(SynthModel::User_04, "USER 04", "Custom User Defined Patch (Slot #27 NVS Storage)"),
-        makeDefaultUserPreset(SynthModel::User_05, "USER 05", "Custom User Defined Patch (Slot #28 NVS Storage)"),
-        makeDefaultUserPreset(SynthModel::User_06, "USER 06", "Custom User Defined Patch (Slot #29 NVS Storage)"),
-        makeDefaultUserPreset(SynthModel::User_07, "USER 07", "Custom User Defined Patch (Slot #30 NVS Storage)"),
-        makeDefaultUserPreset(SynthModel::User_08, "USER 08", "Custom User Defined Patch (Slot #31 NVS Storage)"),
-        makeDefaultUserPreset(SynthModel::User_09, "USER 09", "Custom User Defined Patch (Slot #32 NVS Storage)")
+        // 23. ARP Odyssey duophonic lead (Slot #24)
+        {
+            .model = SynthModel::Odyssey,
+            .name = "ODYSSEY",
+            .description = "ARP Odyssey Hard Sync Lead & Ring Modulator",
+            .waveform = Waveform::Sawtooth,
+            .subOscLevel = 0.35f,
+            .detuneCents = 12.0f,
+            .drive = 1.20f,
+            .cutoffHz = 3200.0f,
+            .resonanceQ = 3.0f,
+            .filterEnvAmount = 0.60f,
+            .ampAttackMs = 5.0f, .ampDecayMs = 300.0f, .ampSustain = 0.80f, .ampReleaseMs = 200.0f,
+            .filterAttackMs = 5.0f, .filterDecayMs = 450.0f, .filterSustain = 0.20f, .filterReleaseMs = 200.0f,
+            .chorusEnabled = false, .chorusRateHz = 0.5f, .chorusDepthMs = 2.0f, .chorusMix = 0.0f,
+            .bankA = {
+                .labels   = {"Cutoff", "Resonnc", "SubOsc", "Chorus", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 77, 78, 73, 75, 79, 72},
+                .defaults = {93, 45, 44, 0,  25, 75, 102, 68},
+            },
+            .bankB = {
+                .labels   = {"FiltEnv", "F-Attack", "F-Decay", "F-Sust", "F-Rel", "Drive", "Glide", "Master"},
+                .ccs      = {76, 80, 81, 82, 83, 87, 93, 7},
+                .defaults = {76, 25, 83, 25, 68, 10, 0,  100},
+            },
+            .voiceMode = VoiceMode::Monophonic,
+        },
+
+        // 24. Roland Jupiter-8 cross-modulated poly (Slot #25)
+        {
+            .model = SynthModel::VintageJup,
+            .name = "VINTAGE JUP",
+            .description = "Roland Jupiter-8 Cross-Modulated Dual Saw Poly Synth",
+            .waveform = Waveform::Sawtooth,
+            .subOscLevel = 0.25f,
+            .detuneCents = 8.0f,
+            .drive = 1.10f,
+            .cutoffHz = 2400.0f,
+            .resonanceQ = 2.2f,
+            .filterEnvAmount = 0.45f,
+            .ampAttackMs = 15.0f, .ampDecayMs = 400.0f, .ampSustain = 0.75f, .ampReleaseMs = 350.0f,
+            .filterAttackMs = 20.0f, .filterDecayMs = 500.0f, .filterSustain = 0.35f, .filterReleaseMs = 350.0f,
+            .chorusEnabled = true, .chorusRateHz = 0.5f, .chorusDepthMs = 2.5f, .chorusMix = 0.35f,
+            .bankA = {
+                .labels   = {"Cutoff", "Resonnc", "SubOsc", "Chorus", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 77, 78, 73, 75, 79, 72},
+                .defaults = {88, 37, 32, 44, 41, 81, 95, 78},
+            },
+            .bankB = {
+                .labels   = {"FiltEnv", "F-Attack", "F-Decay", "F-Sust", "F-Rel", "Drive", "ChoRate", "Master"},
+                .ccs      = {76, 80, 81, 82, 83, 87, 84, 7},
+                .defaults = {57, 46, 85, 44, 78, 5,  10, 100},
+            },
+        },
+
+        // 25. Tube-saturated poly synth (Slot #26)
+        {
+            .model = SynthModel::TubeSynth,
+            .name = "TUBESYNTH",
+            .description = "Triode Tube Saturated Asymmetric Poly Lead & Pad",
+            .waveform = Waveform::Sawtooth,
+            .subOscLevel = 0.20f,
+            .detuneCents = 10.0f,
+            .drive = 2.20f,
+            .cutoffHz = 1800.0f,
+            .resonanceQ = 2.5f,
+            .filterEnvAmount = 0.50f,
+            .ampAttackMs = 25.0f, .ampDecayMs = 350.0f, .ampSustain = 0.80f, .ampReleaseMs = 300.0f,
+            .filterAttackMs = 30.0f, .filterDecayMs = 450.0f, .filterSustain = 0.30f, .filterReleaseMs = 300.0f,
+            .chorusEnabled = false, .chorusRateHz = 0.5f, .chorusDepthMs = 2.0f, .chorusMix = 0.0f,
+            .bankA = {
+                .labels   = {"Cutoff", "Resonnc", "Drive", "Chorus", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 87, 78, 73, 75, 79, 72},
+                .defaults = {83, 41, 61, 0,  49, 78, 102, 75},
+            },
+            .bankB = {
+                .labels   = {"FiltEnv", "F-Attack", "F-Decay", "F-Sust", "F-Rel", "Glide", "SubOsc", "Master"},
+                .ccs      = {76, 80, 81, 82, 83, 93, 77, 7},
+                .defaults = {64, 52, 83, 38, 75, 0,  25,  100},
+            },
+        },
+
+        // 26. TR-808 sub bass (Slot #27)
+        {
+            .model = SynthModel::SubFactory,
+            .name = "SUB FACTORY",
+            .description = "TR-808 Sub-Bass with Two-Stage Pitch Envelope & Tube Drive",
+            .waveform = Waveform::Triangle,
+            .subOscLevel = 0.0f,
+            .detuneCents = 0.0f,
+            .drive = 1.80f,
+            .cutoffHz = 650.0f,
+            .resonanceQ = 1.2f,
+            .filterEnvAmount = 0.70f,
+            .ampAttackMs = 2.0f, .ampDecayMs = 800.0f, .ampSustain = 0.0f, .ampReleaseMs = 300.0f,
+            .filterAttackMs = 5.0f, .filterDecayMs = 120.0f, .filterSustain = 0.0f, .filterReleaseMs = 100.0f,
+            .chorusEnabled = false, .chorusRateHz = 0.5f, .chorusDepthMs = 2.0f, .chorusMix = 0.0f,
+            .bankA = {
+                .labels   = {"Cutoff", "Drive", "Resonnc", "Chorus", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 87, 71, 78, 73, 75, 79, 72},
+                .defaults = {64, 41, 24, 0,  11, 93,  0,  75},
+            },
+            .bankB = {
+                .labels   = {"FiltEnv", "SubOsc", "Glide", "ChoRate", "ChoDepth", "F-Attack", "F-Decay", "Master"},
+                .ccs      = {76, 77, 93, 84, 85, 80, 81, 7},
+                .defaults = {89, 0,  0,  10, 42, 25, 58,  100},
+            },
+            .voiceMode = VoiceMode::Monophonic,
+        },
+
+        // 27. Memorymoog 3-oscillator brass (Slot #28)
+        {
+            .model = SynthModel::Memorymoog,
+            .name = "MEMORYMOOG",
+            .description = "Massive 3-Oscillator Detuned Ladder Filter Poly Brass",
+            .waveform = Waveform::Sawtooth,
+            .subOscLevel = 0.50f,
+            .detuneCents = 16.0f,
+            .drive = 1.35f,
+            .cutoffHz = 1600.0f,
+            .resonanceQ = 2.0f,
+            .filterEnvAmount = 0.65f,
+            .ampAttackMs = 20.0f, .ampDecayMs = 450.0f, .ampSustain = 0.70f, .ampReleaseMs = 400.0f,
+            .filterAttackMs = 35.0f, .filterDecayMs = 600.0f, .filterSustain = 0.35f, .filterReleaseMs = 400.0f,
+            .chorusEnabled = false, .chorusRateHz = 0.5f, .chorusDepthMs = 2.0f, .chorusMix = 0.0f,
+            .bankA = {
+                .labels   = {"Cutoff", "Resonnc", "SubOsc", "Chorus", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 77, 78, 73, 75, 79, 72},
+                .defaults = {81, 35, 64, 0,  46, 83, 89, 81},
+            },
+            .bankB = {
+                .labels   = {"FiltEnv", "F-Attack", "F-Decay", "F-Sust", "F-Rel", "Drive", "Glide", "Master"},
+                .ccs      = {76, 80, 81, 82, 83, 87, 93, 7},
+                .defaults = {83, 54, 88, 44, 81, 18, 0,  100},
+            },
+        },
+
+        // 28. SH-101 acid/electro bass (Slot #29)
+        {
+            .model = SynthModel::Iona,
+            .name = "IONA",
+            .description = "SH-101 Snappy Electro & Acid Monosynth with Sub-Oscillator",
+            .waveform = Waveform::Sawtooth,
+            .subOscLevel = 0.65f,
+            .detuneCents = 0.0f,
+            .drive = 1.15f,
+            .cutoffHz = 2200.0f,
+            .resonanceQ = 3.5f,
+            .filterEnvAmount = 0.75f,
+            .ampAttackMs = 2.0f, .ampDecayMs = 250.0f, .ampSustain = 0.50f, .ampReleaseMs = 150.0f,
+            .filterAttackMs = 3.0f, .filterDecayMs = 300.0f, .filterSustain = 0.10f, .filterReleaseMs = 150.0f,
+            .chorusEnabled = false, .chorusRateHz = 0.5f, .chorusDepthMs = 2.0f, .chorusMix = 0.0f,
+            .bankA = {
+                .labels   = {"Cutoff", "Resonnc", "SubOsc", "Chorus", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 77, 78, 73, 75, 79, 72},
+                .defaults = {86, 50, 83, 0,  11, 72, 64, 63},
+            },
+            .bankB = {
+                .labels   = {"FiltEnv", "F-Attack", "F-Decay", "F-Sust", "F-Rel", "Glide", "Drive", "Master"},
+                .ccs      = {76, 80, 81, 82, 83, 93, 87, 7},
+                .defaults = {95, 17, 75, 13, 63, 0,  8,   100},
+            },
+            .voiceMode = VoiceMode::Monophonic,
+        },
+
+        // 29. OPx-4 FM synthesizer (Slot #30)
+        [] {
+            Preset p = makeDefaultUserPreset(SynthModel::OPx4, "OPX-4 FM",
+                "4-Operator FM Synthesizer with 8 Algorithmic Routing Matrix");
+            p.engineMode = EngineMode::Opx4;
+            p.modRatio = 2.0f;
+            p.modDepth = 3.0f;
+            p.modFeedback = 0.40f;
+            p.timbre.opxAlgo = 0;
+            p.ampAttackMs = 5.0f; p.ampDecayMs = 600.0f; p.ampSustain = 0.60f; p.ampReleaseMs = 300.0f;
+            p.filterAttackMs = 5.0f; p.filterDecayMs = 400.0f; p.filterSustain = 0.20f; p.filterReleaseMs = 300.0f;
+            p.bankA = {
+                .labels   = {"ModDepth", "Ratio", "Feedback", "Algo", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 77, 50, 73, 75, 79, 72},
+                .defaults = {32, 14, 34, 0,  25, 88, 76, 75},
+            };
+            p.bankB = {
+                .labels   = {"ModDecay", "ModSust", "ModAtt", "Chorus", "ChoRate", "ChoDepth", "PolyMode", "Master"},
+                .ccs      = {76, 80, 81, 78, 84, 85, 92, 7},
+                .defaults = {78, 25, 27, 10, 10, 56, 127, 100},
+            };
+            return p;
+        }(),
+
+        // 30. ARP Solina String Ensemble (Slot #31)
+        {
+            .model = SynthModel::Solina,
+            .name = "SOLINA STR",
+            .description = "ARP Solina String Ensemble with Violin/Horn Formants & 3-Phase Chorus",
+            .waveform = Waveform::Sawtooth,
+            .subOscLevel = 0.0f,
+            .detuneCents = 4.0f,
+            .drive = 1.0f,
+            .cutoffHz = 6000.0f,
+            .resonanceQ = 1.0f,
+            .filterEnvAmount = 0.0f,
+            .ampAttackMs = 60.0f, .ampDecayMs = 400.0f, .ampSustain = 0.90f, .ampReleaseMs = 450.0f,
+            .filterAttackMs = 80.0f, .filterDecayMs = 400.0f, .filterSustain = 0.90f, .filterReleaseMs = 450.0f,
+            .chorusEnabled = true, .chorusRateHz = 0.6f, .chorusDepthMs = 2.5f, .chorusMix = 0.85f,
+            .bankA = {
+                .labels   = {"Cutoff", "Resonnc", "Chorus", "SubOsc", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 78, 77, 73, 75, 79, 72},
+                .defaults = {105, 20, 108, 0,  63, 81, 114, 83},
+            },
+            .bankB = {
+                .labels   = {"FiltEnv", "F-Attack", "F-Decay", "F-Sust", "F-Rel", "ChoRate", "ChoDepth", "Master"},
+                .ccs      = {76, 80, 81, 82, 83, 84, 85, 7},
+                .defaults = {0,  67, 81, 114, 83, 13, 56, 100},
+            },
+        },
+
+        // 31. Commuted Waveguide Grand Piano (Slot #32)
+        [] {
+            Preset p = makeDefaultUserPreset(SynthModel::StagePiano, "STAGE PIANO",
+                "Commuted Waveguide Acoustic Grand Piano with Dispersion");
+            p.engineMode = EngineMode::StagePiano;
+            p.drive = 1.0f;
+            p.cutoffHz = 5000.0f;
+            p.ampAttackMs = 1.0f; p.ampDecayMs = 3000.0f; p.ampSustain = 0.30f; p.ampReleaseMs = 250.0f;
+            p.timbre.pluckDecayMs = 4000.0f; p.timbre.pluckBright = 0.70f;
+            p.bankA = {
+                .labels   = {"StrDecay", "Bright", "Chorus", "Drive", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {45, 74, 78, 87, 73, 75, 79, 72},
+                .defaults = {102, 102, 10, 0,  0,  118, 38, 72},
+            };
+            p.bankB = {
+                .labels   = {"ChoRate", "ChoDepth", "VibRate", "Glide", "Tremolo", "TremRate", "PolyMode", "Master"},
+                .ccs      = {84, 85, 89, 93, 53, 54, 92, 7},
+                .defaults = {10, 56, 44, 0,  0,  34, 127, 100},
+            };
+            return p;
+        }(),
+
+        // 32. Studio Strings Section (Slot #33)
+        [] {
+            Preset p = makeDefaultUserPreset(SynthModel::StudioStrings, "STUDIO STR",
+                "Studio Bowed String Section with Rosin Friction Noise & Formants");
+            p.engineMode = EngineMode::StudioStrings;
+            p.detuneCents = 8.0f;
+            p.drive = 1.0f;
+            p.cutoffHz = 4500.0f;
+            p.ampAttackMs = 80.0f; p.ampDecayMs = 400.0f; p.ampSustain = 0.85f; p.ampReleaseMs = 350.0f;
+            p.chorusEnabled = true; p.chorusMix = 0.40f;
+            p.bankA = {
+                .labels   = {"Cutoff", "Resonnc", "SubOsc", "Chorus", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 77, 78, 73, 75, 79, 72},
+                .defaults = {100, 35, 32, 51, 67, 81, 108, 78},
+            };
+            p.bankB = {
+                .labels   = {"FiltEnv", "F-Attack", "F-Decay", "F-Sust", "F-Rel", "ChoRate", "ChoDepth", "Master"},
+                .ccs      = {76, 80, 81, 82, 83, 84, 85, 7},
+                .defaults = {64, 46, 78, 38, 75, 10, 56, 100},
+            };
+            return p;
+        }(),
+
+        // 33. Fabric XL Pad (Slot #34)
+        [] {
+            Preset p = makeDefaultUserPreset(SynthModel::FabricXl, "FABRIC XL",
+                "Dual Layer Wavetable Pad with Harmonic Chime & Breath Transients");
+            p.engineMode = EngineMode::FabricXl;
+            p.detuneCents = 6.0f;
+            p.drive = 1.0f;
+            p.cutoffHz = 3500.0f;
+            p.ampAttackMs = 90.0f; p.ampDecayMs = 500.0f; p.ampSustain = 0.85f; p.ampReleaseMs = 450.0f;
+            p.chorusEnabled = true; p.chorusMix = 0.55f;
+            p.bankA = {
+                .labels   = {"Cutoff", "Resonnc", "SubOsc", "Chorus", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 77, 78, 73, 75, 79, 72},
+                .defaults = {95, 35, 32, 70, 69, 85, 108, 83},
+            };
+            p.bankB = {
+                .labels   = {"FiltEnv", "F-Attack", "F-Decay", "F-Sust", "F-Rel", "ChoRate", "ChoDepth", "Master"},
+                .ccs      = {76, 80, 81, 82, 83, 84, 85, 7},
+                .defaults = {64, 46, 78, 38, 75, 10, 56, 100},
+            };
+            return p;
+        }(),
+
+        // 34. Mariana Bass (Slot #35)
+        [] {
+            Preset p = makeDefaultUserPreset(SynthModel::Mariana, "MARIANA",
+                "Dual-Path Coherent Bass with Phase-Locked Sine Sub & Saturated Mid");
+            p.engineMode = EngineMode::Mariana;
+            p.subOscLevel = 0.80f;
+            p.drive = 1.80f;
+            p.cutoffHz = 1200.0f;
+            p.resonanceQ = 1.8f;
+            p.ampAttackMs = 5.0f; p.ampDecayMs = 350.0f; p.ampSustain = 0.70f; p.ampReleaseMs = 180.0f;
+            p.voiceMode = VoiceMode::Monophonic;
+            p.bankA = {
+                .labels   = {"Cutoff", "Resonnc", "SubOsc", "Drive", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 77, 87, 73, 75, 79, 72},
+                .defaults = {75, 33, 102, 41, 25, 78, 89, 66},
+            };
+            p.bankB = {
+                .labels   = {"FiltEnv", "F-Attack", "F-Decay", "F-Sust", "F-Rel", "Glide", "PolyMode", "Master"},
+                .ccs      = {76, 80, 81, 82, 83, 93, 92, 7},
+                .defaults = {64, 46, 78, 38, 75, 0,  0,  100},
+            };
+            return p;
+        }(),
+
+        // 35. Hype Saw (Slot #36)
+        [] {
+            Preset p = makeDefaultUserPreset(SynthModel::Hype, "HYPE SAW",
+                "Phase-Scrambled Detuned Hypersaw with Comb Stereoizer & Pump");
+            p.engineMode = EngineMode::Hype;
+            p.detuneCents = 14.0f;
+            p.tremoloDepth = 0.75f;
+            p.tremoloRateHz = 2.0f;
+            p.cutoffHz = 5500.0f;
+            p.resonanceQ = 1.5f;
+            p.ampAttackMs = 5.0f; p.ampDecayMs = 400.0f; p.ampSustain = 0.85f; p.ampReleaseMs = 250.0f;
+            p.bankA = {
+                .labels   = {"Cutoff", "Resonnc", "SubOsc", "Chorus", "Attack", "Decay", "Sustain", "Release"},
+                .ccs      = {74, 71, 77, 78, 73, 75, 79, 72},
+                .defaults = {103, 29, 32, 10, 25, 81, 108, 72},
+            };
+            p.bankB = {
+                .labels   = {"Tremolo", "TremRate", "Drive", "Glide", "VibRate", "VibDepth", "PolyMode", "Master"},
+                .ccs      = {53, 54, 87, 93, 89, 90, 92, 7},
+                .defaults = {95, 13, 0,  0,  44, 0,  127, 100},
+            };
+            return p;
+        }(),
+
+        // 36..44. User Customizable Slots (Slots #37..#45)
+        makeDefaultUserPreset(SynthModel::User_01, "USER 01", "Custom User Defined Patch (Slot #37 NVS Storage)"),
+        makeDefaultUserPreset(SynthModel::User_02, "USER 02", "Custom User Defined Patch (Slot #38 NVS Storage)"),
+        makeDefaultUserPreset(SynthModel::User_03, "USER 03", "Custom User Defined Patch (Slot #39 NVS Storage)"),
+        makeDefaultUserPreset(SynthModel::User_04, "USER 04", "Custom User Defined Patch (Slot #40 NVS Storage)"),
+        makeDefaultUserPreset(SynthModel::User_05, "USER 05", "Custom User Defined Patch (Slot #41 NVS Storage)"),
+        makeDefaultUserPreset(SynthModel::User_06, "USER 06", "Custom User Defined Patch (Slot #42 NVS Storage)"),
+        makeDefaultUserPreset(SynthModel::User_07, "USER 07", "Custom User Defined Patch (Slot #43 NVS Storage)"),
+        makeDefaultUserPreset(SynthModel::User_08, "USER 08", "Custom User Defined Patch (Slot #44 NVS Storage)"),
+        makeDefaultUserPreset(SynthModel::User_09, "USER 09", "Custom User Defined Patch (Slot #45 NVS Storage)")
     }};
     return presets;
 }

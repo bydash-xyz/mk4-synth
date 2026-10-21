@@ -34,14 +34,29 @@ enum class ScaleMode : uint8_t {
     Count           = 9
 };
 
+enum class SubModMode : uint8_t {
+    None         = 0,
+    HardSyncRing = 1, // Odyssey: process_hard_sync_saw + ring_modulate
+    CrossMod     = 2, // VintageJup: cross_modulate
+    TubeDrive    = 3, // TubeSynth: tube_saturate_sample
+    Sub808       = 4, // SubFactory: PitchEnvelope808 + tube drive
+};
+
 enum class EngineMode : uint8_t {
-    Subtractive = 0,
-    FM          = 1,
-    Wavetable   = 2, // PPG / Waldorf: morphing single-cycle tables into the filter
-    PhaseDist   = 3, // Casio CZ: cosine read through a warped phase, DCW envelope
-    Pluck       = 4, // Karplus-Strong string: noise burst into a tuned, damped delay loop
-    Additive    = 5, // Hammond drawbars: nine sine partials, percussion and key click
-    Count       = 6
+    Subtractive   = 0,
+    FM            = 1,
+    Wavetable     = 2, // PPG / Waldorf: morphing single-cycle tables into the filter
+    PhaseDist     = 3, // Casio CZ: cosine read through a warped phase, DCW envelope
+    Pluck         = 4, // Karplus-Strong string: noise burst into a tuned, damped delay loop
+    Additive      = 5, // Hammond drawbars: nine sine partials, percussion and key click
+    Opx4          = 6, // 4-operator FM (8 algorithms)
+    StagePiano    = 7, // Commuted waveguide grand piano
+    StageEp       = 8, // Modal bark electric piano + 4-stage phaser
+    StudioStrings = 9, // Bowed strings with rosin noise + 3 body formants
+    FabricXl      = 10, // Dual wavetable + chime & breath transients
+    Mariana       = 11, // Dual-path phase-locked sub + tube mid bass
+    Hype          = 12, // Phase-scrambled hypersaw + comb stereoizer + pump
+    Count         = 13
 };
 
 // Casio CZ DCO waveforms (phase distortion engine)
@@ -79,6 +94,8 @@ struct TimbreParams {
     float   percLevel{0.0f};       // percussion level 0..1 (filter envelope is its decay)
     uint8_t percHarmonic{1};       // 0 = second (4'), 1 = third (2 2/3')
     float   keyClick{0.3f};        // key click level 0..1
+    // OPx4
+    uint8_t opxAlgo{0};            // 0..7
 };
 
 enum class VoiceMode : uint8_t {
