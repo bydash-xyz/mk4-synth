@@ -155,8 +155,8 @@ void test_ble_midi_and_nvs_persistence() {
     assert(restoredPreset.waveform == Synth::Waveform::Triangle);
 
     // The v1 dump was stored as a v2 body under q_24, and its ACK queued for the BLE central
-    assert(Preferences::s_storage.count("synth:q_24") == 1);
-    assert(Preferences::s_storage.count("synth:p_24") == 0);
+    assert(Preferences::s_storage.count("synth:q_37") == 1);
+    assert(Preferences::s_storage.count("synth:p_37") == 0);
     auto ack = Synth::SysExProtocol::decodeSysEx(ble.getLastSentResponse().data(), ble.getLastSentResponse().size());
     assert(ack.isValid && ack.type == Synth::SysExCommand::Handshake);
     assert(ack.refCommand == Synth::SysExCommand::PatchDump && ack.handshakeStatus == Synth::HandshakeStatus::AckSuccess);
@@ -165,7 +165,7 @@ void test_ble_midi_and_nvs_persistence() {
     Synth::Preset rhodes = Synth::getPresets()[static_cast<size_t>(Synth::SynthModel::FM_WarmRhodes)];
     rhodes.name = "MY RHODES";
     uint8_t v2Buf[Synth::MAX_SYSEX_MESSAGE_SIZE];
-    size_t v2Len = Synth::SysExProtocol::encodePatchDumpV2(28, rhodes, v2Buf, sizeof(v2Buf));
+    size_t v2Len = Synth::SysExProtocol::encodePatchDumpV2(41, rhodes, v2Buf, sizeof(v2Buf));
     assert(rebootedBle.handleSysExReceived(v2Buf, v2Len));
     ack = Synth::SysExProtocol::decodeSysEx(rebootedBle.getLastSentResponse().data(), rebootedBle.getLastSentResponse().size());
     assert(ack.refCommand == Synth::SysExCommand::PatchDumpV2 && ack.handshakeStatus == Synth::HandshakeStatus::AckSuccess);
@@ -186,38 +186,38 @@ void test_ble_midi_and_nvs_persistence() {
     Synth::RawPatchData oldRaw;
     Synth::SysExProtocol::presetToRawPatch(old, oldRaw);
     const uint8_t* oldBytes = reinterpret_cast<const uint8_t*>(&oldRaw);
-    Preferences::s_storage["synth:p_25"] = std::vector<uint8_t>(oldBytes, oldBytes + sizeof(oldRaw));
+    Preferences::s_storage["synth:p_38"] = std::vector<uint8_t>(oldBytes, oldBytes + sizeof(oldRaw));
     // An oversized q_ blob (corrupt or from a future format) is ignored rather than truncated
-    Preferences::s_storage["synth:q_29"] = std::vector<uint8_t>(Synth::MAX_PATCH_BODY_SIZE + 1, 0x01);
+    Preferences::s_storage["synth:q_42"] = std::vector<uint8_t>(Synth::MAX_PATCH_BODY_SIZE + 1, 0x01);
 
     Synth::SynthEngine thirdEngine;
     thirdEngine.init(44100);
     BleMidiServer thirdBle;
     thirdBle.init(thirdEngine);
-    assert(std::strcmp(thirdEngine.getUserPreset(25).name, "OLD OBXA") == 0);
-    assert(thirdEngine.getUserPreset(25).voicing == Synth::SynthModel::OBXa);
-    assert(std::strcmp(thirdEngine.getUserPreset(28).name, "MY RHODES") == 0);
-    assert(std::abs(thirdEngine.getUserPreset(28).tremoloRateHz - 4.2f) < 0.01f);
-    assert(std::strcmp(thirdEngine.getUserPreset(29).name, "USER 06") == 0);
-    assert(Preferences::s_storage.count("synth:q_25") == 0); // not rewritten at boot
+    assert(std::strcmp(thirdEngine.getUserPreset(38).name, "OLD OBXA") == 0);
+    assert(thirdEngine.getUserPreset(38).voicing == Synth::SynthModel::OBXa);
+    assert(std::strcmp(thirdEngine.getUserPreset(41).name, "MY RHODES") == 0);
+    assert(std::abs(thirdEngine.getUserPreset(41).tremoloRateHz - 4.2f) < 0.01f);
+    assert(std::strcmp(thirdEngine.getUserPreset(42).name, "USER 06") == 0);
+    assert(Preferences::s_storage.count("synth:q_38") == 0); // not rewritten at boot
 
     // 5. Upgrade -> downgrade -> upgrade: slot 25 is saved as v2, then older firmware saves a new p_25.
     //    On the next boot of v2 firmware the newer p_25 wins over the stale q_25.
-    assert(thirdEngine.saveUserPresetToStorage(25));
-    assert(Preferences::s_storage.count("synth:q_25") == 1);
+    assert(thirdEngine.saveUserPresetToStorage(38));
+    assert(Preferences::s_storage.count("synth:q_38") == 1);
     Synth::Preset newer = Synth::getPresets()[static_cast<size_t>(Synth::SynthModel::CS80)];
     newer.name = "DOWNGRADE";
     Synth::RawPatchData newerRaw;
     Synth::SysExProtocol::presetToRawPatch(newer, newerRaw);
     const uint8_t* newerBytes = reinterpret_cast<const uint8_t*>(&newerRaw);
-    Preferences::s_storage["synth:p_25"] = std::vector<uint8_t>(newerBytes, newerBytes + sizeof(newerRaw));
+    Preferences::s_storage["synth:p_38"] = std::vector<uint8_t>(newerBytes, newerBytes + sizeof(newerRaw));
 
     Synth::SynthEngine fourthEngine;
     fourthEngine.init(44100);
     BleMidiServer fourthBle;
     fourthBle.init(fourthEngine);
-    assert(std::strcmp(fourthEngine.getUserPreset(25).name, "DOWNGRADE") == 0);
-    assert(std::strcmp(fourthEngine.getUserPreset(28).name, "MY RHODES") == 0); // untouched slots keep v2
+    assert(std::strcmp(fourthEngine.getUserPreset(38).name, "DOWNGRADE") == 0);
+    assert(std::strcmp(fourthEngine.getUserPreset(41).name, "MY RHODES") == 0); // untouched slots keep v2
 
     std::cout << "  -> BleMidiServer & NVS Persistence tests PASSED!" << std::endl;
 }

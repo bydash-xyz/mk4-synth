@@ -88,6 +88,8 @@ constexpr Role SUBTRACTIVE_ROLES[] = {
     {Synth::CC_TREMOLO_DEPTH,      "Adjusts stereo pan tremolo depth."},
     {Synth::CC_TREMOLO_RATE,       "Adjusts stereo pan tremolo speed."},
     {Synth::CC_VOLUME,             "Adjusts master output volume."},
+    {Synth::CC_OPX_ALGO,          "Selects 1 of 8 FM operator routing algorithms."},
+    {Synth::CC_PLUCK_DECAY,       "Adjusts acoustic string decay time."},
 };
 
 // The 2-operator FM presets reuse some CCs for operator parameters
@@ -104,6 +106,7 @@ constexpr Role FM_ROLES[] = {
     {Synth::CC_FILTER_ENV_DECAY,   "Adjusts modulator envelope attack time."},
     {Synth::CC_FILTER_ENV_SUSTAIN, "Adjusts stereo auto-pan tremolo depth."},
     {Synth::CC_FILTER_ENV_RELEASE, "Adjusts stereo auto-pan tremolo speed."},
+    {Synth::CC_OPX_ALGO,          "Selects 1 of 8 FM operator routing algorithms."},
 };
 
 // The Casio PT-10 presets reuse some CCs for their tone controls
@@ -196,11 +199,11 @@ std::string getParamRole(uint8_t cc, const std::string& label, const Synth::Pres
         return "Sets the " + label + " drawbar from 0 (off) to 8 (full). Each step is 3 dB.";
     }
     const char* text = nullptr;
-    if (Synth::isFmModel(p.model) || mode == Synth::EngineMode::FM) text = findRole(FM_ROLES, cc);
+    if (Synth::isFmModel(p.model) || mode == Synth::EngineMode::FM || mode == Synth::EngineMode::Opx4 || mode == Synth::EngineMode::StageEp) text = findRole(FM_ROLES, cc);
     else if (Synth::isCasioModel(p.model)) text = findRole(CASIO_ROLES, cc);
     else if (mode == Synth::EngineMode::Wavetable) text = findRole(WAVETABLE_ROLES, cc);
     else if (mode == Synth::EngineMode::PhaseDist) text = findRole(PHASE_DIST_ROLES, cc);
-    else if (mode == Synth::EngineMode::Pluck) text = findRole(PLUCK_ROLES, cc);
+    else if (mode == Synth::EngineMode::Pluck || mode == Synth::EngineMode::StagePiano) text = findRole(PLUCK_ROLES, cc);
     else if (mode == Synth::EngineMode::Additive) text = findRole(ADDITIVE_ROLES, cc);
     if (!text) text = findRole(SUBTRACTIVE_ROLES, cc);
     if (!text) {
@@ -341,6 +344,32 @@ std::string getTip(Synth::SynthModel m, const Synth::Preset& p) {
                    "percussion.";
         case Synth::SynthModel::B3_Gospel:
             return "Turn {LeslRate} counter-clockwise to slow the rotary speaker. Turn {Click} for more key click.";
+        case Synth::SynthModel::Odyssey:
+            return "Turn {Cutoff} to shape the duophonic lead. Hard sync and ring modulation produce biting aggression.";
+        case Synth::SynthModel::VintageJup:
+            return "Turn {Chorus} for shimmering stereo width. Cross-modulation delivers thick analog poly warmth.";
+        case Synth::SynthModel::TubeSynth:
+            return "Turn {Drive} clockwise to push asymmetric triode saturation and harmonic warmth into the filter.";
+        case Synth::SynthModel::SubFactory:
+            return "Two-stage pitch envelope produces massive TR-808 sub impact. Turn {Cutoff} and {Drive} to dial the weight.";
+        case Synth::SynthModel::Memorymoog:
+            return "Three detuned oscillators feed a 24 dB ladder filter for colossal poly brass. Turn {Cutoff} for filter sweeps.";
+        case Synth::SynthModel::Iona:
+            return "Snappy SH-101 style electro bass with punchy sub-oscillator. Turn {Resonnc} and {F-Decay} for tight acid lines.";
+        case Synth::SynthModel::OPx4:
+            return "Turn {Algo} to switch between the 8 FM operator routing algorithms. Turn {ModDepth} and {Ratio} to explore complex timbres.";
+        case Synth::SynthModel::Solina:
+            return "ARP Solina string ensemble with 3-phase chorus. Turn {Cutoff} and {ChoRate} to shape lush string swells.";
+        case Synth::SynthModel::StagePiano:
+            return "Commuted waveguide grand piano. Turn {StrDecay} to alter sustain decay and {Bright} for hammer response.";
+        case Synth::SynthModel::StudioStrings:
+            return "Rich bowed string section with rosin friction noise and body formants. Turn {Chorus} for orchestra depth.";
+        case Synth::SynthModel::FabricXl:
+            return "Dual-layer wavetable pad with high chime and breath transients. Turn {Chorus} and {Cutoff} for ambient washes.";
+        case Synth::SynthModel::Mariana:
+            return "Dual-path bass with phase-locked sine sub and saturated mid overdrive. Turn {Drive} and {SubOsc} for deep low end.";
+        case Synth::SynthModel::Hype:
+            return "Phase-scrambled hypersaw stack with stereo comb filter and sidechain pump. Turn {Tremolo} for pumping modulation.";
         default:
             if (Synth::isUserModel(m)) {
                 return "Turn the knobs to edit the patch. To keep it, send SysEx command 0x03 with a slot number (" +
@@ -426,6 +455,20 @@ std::string waveformSvg(Synth::SynthModel model, const Synth::Preset& p) {
     switch (Synth::presetEngineMode(p)) {
         case Synth::EngineMode::FM:
             return waveSvg("FM Sine Operator", "M 4 16 Q 16 0, 28 16 T 52 16 T 76 16 T 96 16");
+        case Synth::EngineMode::Opx4:
+            return waveSvg("4-Op FM Matrix", "M 4 16 Q 16 0, 28 16 T 52 16 T 76 16 T 96 16");
+        case Synth::EngineMode::StageEp:
+            return waveSvg("Electric Piano Tine", "M 4 16 Q 16 2, 28 16 T 52 16 T 76 16 T 96 16");
+        case Synth::EngineMode::StagePiano:
+            return waveSvg("Acoustic Piano Waveguide", "M 4 16 L 8 4 L 16 28 L 24 8 L 36 22 L 52 12 L 72 18 L 96 16");
+        case Synth::EngineMode::StudioStrings:
+            return waveSvg("Bowed String Formants", "M 4 20 L 16 8 L 28 24 L 40 10 L 52 22 L 64 12 L 76 20 L 96 16");
+        case Synth::EngineMode::FabricXl:
+            return waveSvg("Dual Layer Wavetable Pad", "M 4 16 C 10 4 14 6 18 16 C 22 26 26 28 30 16 L 34 8 L 40 24 L 46 12 L 50 16 C 56 6 60 12 64 16 C 68 20 72 26 76 16 L 80 10 L 84 22 L 88 14 L 96 16");
+        case Synth::EngineMode::Mariana:
+            return waveSvg("Dual Sub + Saturated Bass", "M 4 16 Q 16 2, 28 16 T 52 16 T 76 16 T 96 16");
+        case Synth::EngineMode::Hype:
+            return waveSvg("Hypersaw Stack", "M 4 24 L 18 8 L 18 24 L 32 8 L 32 24 L 46 8 L 46 24 L 60 8 L 60 24 L 74 8 L 74 24 L 88 8 L 88 24 L 96 16");
         case Synth::EngineMode::Wavetable:
             return waveSvg("Wavetable Frames", "M 4 16 C 10 2 14 2 18 16 C 22 30 26 30 30 16 L 34 6 L 40 26 L 46 10 L 50 16 "
                                                "C 56 4 60 10 64 16 C 68 22 72 28 76 16 L 80 8 L 84 24 L 88 12 L 96 16");
@@ -497,6 +540,20 @@ std::string renderVoiceSpec(const Synth::Preset& p, Synth::SynthModel model) {
     static const char* const kPdWaves[] = {"Saw", "Square", "Pulse", "Double Sine", "Resonance I", "Resonance II", "Resonance III"};
     if (fm) {
         osc = "2-Op FM Sine, " + formatRatio(p.modRatio) + " Ratio";
+    } else if (mode == Synth::EngineMode::Opx4) {
+        osc = "4-Operator FM Matrix (Algo " + std::to_string(p.timbre.opxAlgo + 1) + ")";
+    } else if (mode == Synth::EngineMode::StageEp) {
+        osc = "Stage Electric Piano (Tine + Pickup FM)";
+    } else if (mode == Synth::EngineMode::StagePiano) {
+        osc = "Commuted Waveguide Acoustic Grand Piano";
+    } else if (mode == Synth::EngineMode::StudioStrings) {
+        osc = "Studio Bowed String Section (Friction + Formants)";
+    } else if (mode == Synth::EngineMode::FabricXl) {
+        osc = "Fabric XL Dual Wavetable + Chime & Breath";
+    } else if (mode == Synth::EngineMode::Mariana) {
+        osc = "Mariana Dual-Path Coherent Bass (Sub + Drive)";
+    } else if (mode == Synth::EngineMode::Hype) {
+        osc = "Hype Hypersaw Stack (Stereo Comb + Pump)";
     } else if (mode == Synth::EngineMode::Wavetable) {
         std::string table = Synth::Wavetables::tableName(t.wtTable);
         for (size_t i = 1; i < table.size(); ++i) table[i] = static_cast<char>(std::tolower(table[i]));
@@ -530,6 +587,9 @@ std::string renderVoiceSpec(const Synth::Preset& p, Synth::SynthModel model) {
     if (mode == Synth::EngineMode::PhaseDist) filter = "None (DCW Envelope)";
     if (mode == Synth::EngineMode::Pluck)     filter = "None (String Loop Damping)";
     if (mode == Synth::EngineMode::Additive)  filter = "None (Drawbars)";
+    if (mode == Synth::EngineMode::Opx4)      filter = "None (4-Op FM Routing)";
+    if (mode == Synth::EngineMode::StageEp)   filter = "None (Tine Pickup Emulation)";
+    if (mode == Synth::EngineMode::StagePiano)filter = "None (Waveguide Loop Filter)";
 
     std::string fx;
     if (p.chorusEnabled) fx = "Stereo Chorus";

@@ -1489,5 +1489,198 @@ void apply_hype_pump(float* buf_l, float* buf_r, int frames, float pump_depth, f
     *pump_phase = phase;
 }
 
-} // namespace Synth
 
+void Voice::initStagePiano(uint8_t noteNumber, uint8_t velocity) {
+    float velNorm = std::clamp(static_cast<float>(velocity) / 127.0f, 0.01f, 1.0f);
+    float freqHz = 440.0f * ParameterScaler::fastExp2((static_cast<float>(noteNumber) - 69.0f) * (1.0f / 12.0f));
+    if (freqHz <= 0.0f) freqHz = 440.0f;
+    float T0 = sampleRate_ / freqHz;
+    float w0 = TWO_PI_F * freqHz / sampleRate_;
+
+    dispC_ = -0.015f;
+    float phiDisp = -w0 + 2.0f * std::atan2(dispC_ * std::sin(w0), 1.0f + dispC_ * std::cos(w0));
+    float dDisp = -phiDisp / w0;
+
+    dampD_ = 0.35f - 0.20f * velNorm;
+    float reDamp = (1.0f - dampD_) + dampD_ * std::cos(w0);
+    float imDamp = -dampD_ * std::sin(w0);
+    float phiDamp = std::atan2(imDamp, reDamp);
+    float dDamp = -phiDamp / w0;
+
+    float dRem = T0 - dDisp - dDamp;
+    pianoDelayM_ = static_cast<int>(std::floor(dRem - 0.5f));
+    if (pianoDelayM_ < 2) pianoDelayM_ = 2;
+    if (pianoDelayM_ > static_cast<int>(PLUCK_LINE_SIZE - 4)) pianoDelayM_ = static_cast<int>(PLUCK_LINE_SIZE - 4);
+    float dTh = dRem - static_cast<float>(pianoDelayM_);
+
+    float denom = std::sin(w0 * (1.0f + dTh) * 0.5f);
+    if (std::abs(denom) > 1e-9f) {
+        thiranA_ = std::sin(w0 * (1.0f - dTh) * 0.5f) / denom;
+    } else {
+        thiranA_ = (1.0f - dTh) / (1.0f + dTh);
+    }
+
+    if (!pluckLine_.empty()) {
+        std::fill(pluckLine_.begin(), pluckLine_.end(), 0.0f);
+    }
+    pianoWritePos_ = 0;
+    thiranX1_ = 0.0f; thiranY1_ = 0.0f;
+    dispX1_ = 0.0f; dispY1_ = 0.0f;
+    dampPrev_ = 0.0f;
+    pianoReleaseGain_ = 1.0f;
+
+    int tauSamples = std::clamp(static_cast<int>(sampleRate_ * (0.0025f - 0.0015f * velNorm)), 4, 120);
+    hammerLen_ = static_cast<size_t>(tauSamples);
+    hammerPos_ = 0;
+    float amp = velNorm * 0.8f;
+    for (size_t i = 0; i < hammerLen_; ++i) {
+        hammerBuffer_[i] = 0.5f * (1.0f - std::cos(TWO_PI_F * static_cast<float>(i) / static_cast<float>(hammerLen_))) * amp;
+    }
+    pianoActive_ = true;
+}
+
+void Voice::renderOpx4(float* acc, int n, const float* bend) {
+    for (int i = 0; i < n; ++i) {
+        if (controlSubsample_ == 0) {
+            float f = noteToHz(currentNote_ + bend[i] + driftCents_ * 0.01f);
+            opx4_.setFrequency(f);
+            opx4_.setAlgorithm(timbre_.opxAlgo);
+            opx4_.setFeedback(modFeedback_);
+            opx4_.setOpRatio(0, 1.0f);
+            opx4_.setOpRatio(1, modRatio_);
+            opx4_.setOpRatio(2, modRatio_ * 2.0f);
+            opx4_.setOpRatio(3, modRatio_ * 3.0f);
+        }
+        if (++controlSubsample_ >= CONTROL_INTERVAL) controlSubsample_ = 0;
+
+        float amp = ampEnv_.process() * velocity_;
+        float fEnv = filterEnv_.process();
+        float modLvl = std::clamp(fEnv * modDepth_ * 0.25f, 0.0f, 2.0f);
+        opx4_.setOpLevel(0, amp);
+        opx4_.setOpLevel(1, modLvl);
+        opx4_.setOpLevel(2, modLvl);
+        opx4_.setOpLevel(3, modLvl);
+        acc[i] += opx4_.processSample();
+    }
+}
+
+void Voice::renderStagePiano(float* acc, int n, const float* bend) {
+    (void)bend;
+    if (!pianoActive_) return;
+    for (int i = 0; i < n; ++i) {
+        int rdPos = (pianoWritePos_ + PLUCK_LINE_SIZE - pianoDelayM_) & (PLUCK_LINE_SIZE - 1);
+        float x = pluckLine_[rdPos];
+
+        float thY = thiranA_ * x + thiranX1_ - thiranA_ * thiranY1_;
+        thiranX1_ = x;
+        thiranY1_ = thY;
+
+        float dispY = dispC_ * thY + dispX1_ - dispC_ * dispY1_;
+        dispX1_ = thY;
+        dispY1_ = dispY;
+
+        float dampY = (1.0f - dampD_) * dispY + dampD_ * dampPrev_;
+        dampPrev_ = dispY;
+
+        float excite = 0.0f;
+        if (hammerPos_ < hammerLen_) {
+            excite = hammerBuffer_[hammerPos_++];
+        }
+
+        float inp = excite + loopGain_ * dampY;
+        pluckLine_[pianoWritePos_] = inp;
+        pianoWritePos_ = (pianoWritePos_ + 1) & (PLUCK_LINE_SIZE - 1);
+
+        float out = dispY * pianoReleaseGain_;
+        if (pianoReleaseGain_ < 0.999f) {
+            pianoReleaseGain_ *= pianoReleaseCoef_;
+            if (pianoReleaseGain_ < 1e-4f) pianoActive_ = false;
+        }
+        acc[i] += out;
+    }
+}
+
+void Voice::renderStageEp(float* acc, int n, const float* bend) {
+    (void)bend;
+    for (int i = 0; i < n; ++i) {
+        acc[i] += stageEp_.processSample();
+    }
+}
+
+void Voice::renderStudioStrings(float* acc, int n, const float* bend) {
+    (void)bend;
+    for (int i = 0; i < n; ++i) {
+        acc[i] += strings_.processSample();
+    }
+}
+
+void Voice::renderFabricXl(float* acc, int n, const float* bend) {
+    (void)bend;
+    for (int i = 0; i < n; ++i) {
+        acc[i] += fabric_.processSample();
+    }
+}
+
+void Voice::renderMariana(float* acc, int n, const float* bend) {
+    (void)bend;
+    for (int i = 0; i < n; ++i) {
+        acc[i] += mariana_.processSample();
+    }
+}
+
+void Voice::renderHype(float* acc, int n, const float* bend) {
+    (void)bend;
+    if (!ampEnv_.isActive()) return;
+    constexpr size_t HYPE_BUF_SIZE = 1024;
+    for (int i = 0; i < n; ++i) {
+        float f0 = noteToHz(currentNote_);
+        float halfDetune = detuneCents_ * 0.5f;
+        float dt1 = (f0 * ParameterScaler::fastExp2(-halfDetune * (1.0f / 1200.0f))) / sampleRate_;
+        float s1 = 2.0f * wtPhase1_ - 1.0f;
+        if (wtPhase1_ < dt1) {
+            float t = wtPhase1_ / dt1;
+            s1 -= (2.0f * t - t * t - 1.0f);
+        } else if (wtPhase1_ > 1.0f - dt1) {
+            float t = (wtPhase1_ - 1.0f) / dt1;
+            s1 -= (2.0f * t + t * t + 1.0f);
+        }
+        wtPhase1_ += dt1;
+        if (wtPhase1_ >= 1.0f) wtPhase1_ -= 1.0f;
+
+        float dt2 = (f0 * ParameterScaler::fastExp2(halfDetune * (1.0f / 1200.0f))) / sampleRate_;
+        float s2 = 2.0f * wtPhase2_ - 1.0f;
+        if (wtPhase2_ < dt2) {
+            float t = wtPhase2_ / dt2;
+            s2 -= (2.0f * t - t * t - 1.0f);
+        } else if (wtPhase2_ > 1.0f - dt2) {
+            float t = (wtPhase2_ - 1.0f) / dt2;
+            s2 -= (2.0f * t + t * t + 1.0f);
+        }
+        wtPhase2_ += dt2;
+        if (wtPhase2_ >= 1.0f) wtPhase2_ -= 1.0f;
+
+        float monoMix = 0.5f * (s1 + s2);
+        pluckLine_[hypeWritePos_] = monoMix;
+
+        float lfo = SineLut::lookupFast(TWO_PI_F * hypeLfoPhase_);
+        hypeLfoPhase_ += 0.4f / sampleRate_;
+        if (hypeLfoPhase_ >= 1.0f) hypeLfoPhase_ -= 1.0f;
+
+        int delayL = static_cast<int>(sampleRate_ * (0.007f + 0.002f * lfo));
+        int delayR = static_cast<int>(sampleRate_ * (0.011f - 0.002f * lfo));
+
+        size_t rdL = (hypeWritePos_ + HYPE_BUF_SIZE - static_cast<size_t>(delayL)) % HYPE_BUF_SIZE;
+        size_t rdR = (hypeWritePos_ + HYPE_BUF_SIZE - static_cast<size_t>(delayR)) % HYPE_BUF_SIZE;
+        hypeWritePos_ = (hypeWritePos_ + 1) % HYPE_BUF_SIZE;
+
+        float delL = pluckLine_[rdL];
+        float delR = pluckLine_[rdR];
+
+        float amp = ampEnv_.process() * velocity_;
+        float outL = (monoMix + 0.8f * delL) * 0.6f * amp;
+        float outR = (monoMix - 0.8f * delR) * 0.6f * amp;
+        acc[i] += 0.5f * (outL + outR);
+    }
+}
+
+} // namespace Synth

@@ -99,6 +99,7 @@ KnobReading readKnob(const SynthEngine& e, uint8_t cc) {
         case CC_KEY_CLICK:          return {0, e.getTimbre().keyClick};
         case CC_TREMOLO_DEPTH:      return {0, e.getTremoloDepth()};
         case CC_TREMOLO_RATE:       return {0, e.getTremoloRateHz()};
+        case CC_OPX_ALGO:           return {static_cast<int>(e.getTimbre().opxAlgo), 0.0f};
         default:
             if (cc >= CC_DRAWBAR_1 && cc <= CC_DRAWBAR_9) {
                 return {static_cast<int>(e.getTimbre().drawbars[cc - CC_DRAWBAR_1]), 0.0f};

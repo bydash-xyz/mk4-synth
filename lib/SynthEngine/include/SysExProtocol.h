@@ -99,7 +99,8 @@ enum class ParamId : uint8_t {
     PercHarmonic       = 0x6E,
     KeyClick           = 0x6F,
     Drawbar1           = 0x70, // 16'; Drawbar1 + i for the nine drawbars (0x70..0x78)
-    Drawbar9           = 0x78  // 1'
+    Drawbar9           = 0x78, // 1'
+    OpxAlgo            = 0x79  // OPx4 algorithm (0..7)
 };
 
 // Patch-scope parameters: the single source of truth for ranges, curves and the Preset member each ID

@@ -47,6 +47,12 @@ void Voice::init(float sampleRate) {
     wtPhase2_ = static_cast<float>(h >> 8) * (1.0f / 16777216.0f);
     h = h * 1664525u + 1013904223u;
     addPhase_ = static_cast<float>(h >> 8) * (1.0f / 16777216.0f);
+    pitchEnv808_.init(sampleRate);
+    opx4_.init(sampleRate);
+    stageEp_.init(sampleRate);
+    strings_.init(sampleRate);
+    fabric_.init(sampleRate);
+    mariana_.init(sampleRate);
     setSampleRate(sampleRate);
 }
 
@@ -149,6 +155,39 @@ void Voice::noteOn(uint8_t noteNumber, uint8_t velocity, uint32_t timestamp) {
     }
     if (engineMode_ == EngineMode::Pluck) excitePluck(wasIdle, velNorm);
     if (engineMode_ == EngineMode::Additive) clickEnv_ = timbre_.keyClick * (0.5f + 0.5f * velNorm);
+
+    syncMasterPhase_ = 0.0f;
+    syncSlavePhase_ = 0.0f;
+    ringDcZ1_ = 0.0f; ringDcIn1_ = 0.0f;
+    tubeDcZ1_ = 0.0f; tubeDcIn1_ = 0.0f;
+    if (subModMode_ == SubModMode::Sub808) {
+        pitchEnv808_.setClickTimeMs(filterEnv_.getAttackMs());
+        pitchEnv808_.setBodyTimeMs(filterEnv_.getDecayMs());
+        pitchEnv808_.trigger();
+    }
+    if (engineMode_ == EngineMode::Opx4) {
+        opx4_.reset();
+        opx4_.setAlgorithm(timbre_.opxAlgo);
+        opx4_.setFrequency(noteToHz(currentNote_));
+    } else if (engineMode_ == EngineMode::StageEp) {
+        stageEp_.noteOn(noteNumber, velocity);
+        stageEp_.setTremoloDepth(0.0f);
+    } else if (engineMode_ == EngineMode::StudioStrings) {
+        strings_.noteOn(noteNumber, velocity);
+        strings_.setDetuneCents(detuneCents_);
+    } else if (engineMode_ == EngineMode::FabricXl) {
+        fabric_.noteOn(noteNumber, velocity);
+        fabric_.setDetuneCents(detuneCents_);
+    } else if (engineMode_ == EngineMode::Mariana) {
+        mariana_.noteOn(noteNumber, velocity);
+        mariana_.setFrequency(noteToHz(currentNote_));
+        mariana_.setDrive(drive_);
+    } else if (engineMode_ == EngineMode::StagePiano) {
+        initStagePiano(noteNumber, velocity);
+    } else if (engineMode_ == EngineMode::Hype) {
+        hypeWritePos_ = 0;
+        hypeLfoPhase_ = 0.0f;
+    }
     // A sounding voice keeps its oscillator phases and filter state: the envelope continues from its
     // current level, so retriggers and steals are click-free (analog VCOs are free-running).
 
@@ -185,6 +224,14 @@ void Voice::legatoNoteChange(uint8_t noteNumber, uint8_t velocity, bool glide) {
 void Voice::noteOff() {
     ampEnv_.noteOff();
     filterEnv_.noteOff();
+    if (engineMode_ == EngineMode::StageEp) stageEp_.noteOff();
+    if (engineMode_ == EngineMode::StudioStrings) strings_.noteOff();
+    if (engineMode_ == EngineMode::FabricXl) fabric_.noteOff();
+    if (engineMode_ == EngineMode::Mariana) mariana_.noteOff();
+    if (engineMode_ == EngineMode::StagePiano) {
+        pianoReleaseGain_ = 0.998f;
+        pianoReleaseCoef_ = 0.994f;
+    }
 }
 
 void Voice::fastRelease() {
@@ -395,8 +442,13 @@ void Voice::renderSubtractive(float* acc, int n, const float* bend) {
         }
 
         // 4. Control-rate pitch / cutoff update
+        float pitchMod808 = 0.0f;
+        if (subModMode_ == SubModMode::Sub808) {
+            pitchMod808 = pitchEnv808_.process() * envAmount;
+        }
+
         if (cs == 0) {
-            const float pitchNote = cur + bend[i] + driftCents * 0.01f;
+            const float pitchNote = cur + bend[i] + driftCents * 0.01f + pitchMod808;
             const float freq = noteToHz(pitchNote);
             o1.setFrequency(freq);
             o2.setFrequency(freq * detuneRatio * drift2);
@@ -425,16 +477,37 @@ void Voice::renderSubtractive(float* acc, int n, const float* bend) {
         // 5. Oscillators. The sub is phase-locked to osc1 (a divide-by-two, as on the Juno DCO); its
         // parity is tracked even while it is silent so turning it up later keeps the same lock.
         float osc;
-        if constexpr (Sub) {
-            so.setPhaseOnly(0.5f * (o1.getPhase() + (parity ? 1.0f : 0.0f)));
-            osc = oscSample(o1) * 0.6f + oscSample(o2) * 0.4f + so.processWave<Waveform::Square>() * subGain;
+        if (subModMode_ == SubModMode::HardSyncRing) {
+            float slaveRatio = 1.0f + (fEnv * envAmount * 3.0f);
+            float masterInc = (noteToHz(cur + bend[i] + driftCents * 0.01f)) / sr;
+            float slaveInc = (noteToHz(cur + bend[i] + driftCents * 0.01f) * slaveRatio * detuneRatio) / sr;
+            float syncSaw = process_hard_sync_saw(&syncMasterPhase_, masterInc, &syncSlavePhase_, slaveInc);
+            float o2Val = oscSample(o2);
+            float ring = ring_modulate(syncSaw, o2Val, &ringDcZ1_, &ringDcIn1_);
+            osc = syncSaw * (1.0f - subGain) + ring * subGain;
+        } else if (subModMode_ == SubModMode::CrossMod) {
+            float o2Val = oscSample(o2);
+            float o1Inc = (noteToHz(cur + bend[i] + driftCents * 0.01f)) / sr;
+            float warpedInc = cross_modulate(o1Inc, o2Val, subGain * 2.0f);
+            o1.setFrequency(warpedInc * sr);
+            float o1Val = oscSample(o1);
+            osc = 0.6f * o1Val + 0.4f * o2Val;
         } else {
-            osc = oscSample(o1) * 0.6f + oscSample(o2) * 0.4f;
+            if constexpr (Sub) {
+                so.setPhaseOnly(0.5f * (o1.getPhase() + (parity ? 1.0f : 0.0f)));
+                osc = oscSample(o1) * 0.6f + oscSample(o2) * 0.4f + so.processWave<Waveform::Square>() * subGain;
+            } else {
+                osc = oscSample(o1) * 0.6f + oscSample(o2) * 0.4f;
+            }
+            if (o1.didWrap()) parity = !parity;
         }
-        if (o1.didWrap()) parity = !parity;
 
         // Overdrive / saturation before the filter
-        if constexpr (Drive) osc = ParameterScaler::softClip(osc * drive);
+        if (subModMode_ == SubModMode::TubeDrive || subModMode_ == SubModMode::Sub808) {
+            osc = tube_saturate_sample(osc, drive, 0.15f, &tubeDcZ1_, &tubeDcIn1_);
+        } else if constexpr (Drive) {
+            osc = ParameterScaler::softClip(osc * drive);
+        }
 
         g += gStep;
         float filtered;
@@ -602,6 +675,20 @@ void Voice::renderBlock(float* acc, int n, const float* bend) {
             else       renderPluck<false>(acc, n, bend);
         } else if (engineMode_ == EngineMode::Additive) {
             renderAdditive(acc, n, bend);
+        } else if (engineMode_ == EngineMode::Opx4) {
+            renderOpx4(acc, n, bend);
+        } else if (engineMode_ == EngineMode::StagePiano) {
+            renderStagePiano(acc, n, bend);
+        } else if (engineMode_ == EngineMode::StageEp) {
+            renderStageEp(acc, n, bend);
+        } else if (engineMode_ == EngineMode::StudioStrings) {
+            renderStudioStrings(acc, n, bend);
+        } else if (engineMode_ == EngineMode::FabricXl) {
+            renderFabricXl(acc, n, bend);
+        } else if (engineMode_ == EngineMode::Mariana) {
+            renderMariana(acc, n, bend);
+        } else if (engineMode_ == EngineMode::Hype) {
+            renderHype(acc, n, bend);
         } else {
             const Waveform w = osc1_.getWaveform();
             if (w != osc2_.getWaveform()) {

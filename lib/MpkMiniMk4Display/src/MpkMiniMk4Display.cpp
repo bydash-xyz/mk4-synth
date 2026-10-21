@@ -874,6 +874,19 @@ Theme DisplayDriver::themeForPresetName(const std::string& presetName, bool isBa
     };
     // Ordered: more specific names first ("DX E-PIANO" must not match the Casio "PIANO")
     static const Entry kThemes[] = {
+        {{"ODYSSEY"},                    0xE67E22, 10, "Sync lead"},
+        {{"VINTAGE JUP", "JUPITER"},    0xE74C3C, 5,  "Analog poly"},
+        {{"TUBESYNTH"},                  0xD35400, 9,  "Tube poly"},
+        {{"SUB FACTORY"},                0x27AE60, 25, "Sub bass"},
+        {{"MEMORYMOOG"},                 0x8E44AD, 49, "Analog poly"},
+        {{"IONA"},                       0x16A085, 29, "Acid bass"},
+        {{"OPX-4", "OPX"},              0x2980B9, 37, "FM poly"},
+        {{"SOLINA"},                     0x9B59B6, 45, "String ensemble"},
+        {{"STAGE PIANO"},                0x34495E, 13, "Grand piano"},
+        {{"STUDIO STR"},                 0xC0392B, 41, "String section"},
+        {{"FABRIC"},                     0x1ABC9C, 21, "Wavetable pad"},
+        {{"MARIANA"},                    0x2C3E50, 17, "Dual bass"},
+        {{"HYPE"},                       0xF39C12, 61, "Hypersaw"},
         {{"JUNO"},                       0xFF6A1F, 5,  "Analog poly"},
         {{"MOOG", "MINI"},               0xFFB02E, 9,  "Analog mono"},
         {{"PROPHET"},                    0xB46CFF, 49, "Analog poly"},

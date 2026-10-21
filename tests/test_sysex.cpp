@@ -343,7 +343,7 @@ int main() {
             {10, "PT-10 FLUTE", Synth::SynthModel::CasioPT10_Flute,   Synth::EngineMode::Subtractive},
             {11, "DX E-PIANO",  Synth::SynthModel::DX_EPiano,         Synth::EngineMode::FM},
             {12, "FM TINES",    Synth::SynthModel::FM_CrystalTines,   Synth::EngineMode::FM},
-            {13, "RHODES",      Synth::SynthModel::FM_WarmRhodes,     Synth::EngineMode::FM},
+            {13, "RHODES",      Synth::SynthModel::FM_WarmRhodes,     Synth::EngineMode::StageEp},
             {14, "FM CLAVINET", Synth::SynthModel::FM_Clavinet,       Synth::EngineMode::FM},
             {15, "FM ORGAN",    Synth::SynthModel::FM_DrawbarOrgan,   Synth::EngineMode::FM},
             {16, "PPG WAVE",    Synth::SynthModel::PPG_Wave,          Synth::EngineMode::Wavetable},
@@ -354,6 +354,19 @@ int main() {
             {21, "KS KOTO",     Synth::SynthModel::KS_Koto,           Synth::EngineMode::Pluck},
             {22, "B3 JAZZ",     Synth::SynthModel::B3_Jazz,           Synth::EngineMode::Additive},
             {23, "B3 GOSPEL",   Synth::SynthModel::B3_Gospel,         Synth::EngineMode::Additive},
+            {24, "ODYSSEY",      Synth::SynthModel::Odyssey,       Synth::EngineMode::Subtractive},
+            {25, "VINTAGE JUP",  Synth::SynthModel::VintageJup,    Synth::EngineMode::Subtractive},
+            {26, "TUBESYNTH",    Synth::SynthModel::TubeSynth,     Synth::EngineMode::Subtractive},
+            {27, "SUB FACTORY",  Synth::SynthModel::SubFactory,    Synth::EngineMode::Subtractive},
+            {28, "MEMORYMOOG",   Synth::SynthModel::Memorymoog,    Synth::EngineMode::Subtractive},
+            {29, "IONA",         Synth::SynthModel::Iona,          Synth::EngineMode::Subtractive},
+            {30, "OPX-4 FM",     Synth::SynthModel::OPx4,          Synth::EngineMode::Opx4},
+            {31, "SOLINA STR",   Synth::SynthModel::Solina,        Synth::EngineMode::Subtractive},
+            {32, "STAGE PIANO",  Synth::SynthModel::StagePiano,    Synth::EngineMode::StagePiano},
+            {33, "STUDIO STR",   Synth::SynthModel::StudioStrings, Synth::EngineMode::StudioStrings},
+            {34, "FABRIC XL",    Synth::SynthModel::FabricXl,      Synth::EngineMode::FabricXl},
+            {35, "MARIANA",      Synth::SynthModel::Mariana,       Synth::EngineMode::Mariana},
+            {36, "HYPE SAW",     Synth::SynthModel::Hype,          Synth::EngineMode::Hype},
         };
         for (const Expect& e : factory) {
             Synth::Preset out;
@@ -370,21 +383,21 @@ int main() {
         assert(std::abs(rhodes.tremoloRateHz - 4.2f) < 0.01f);
         assert(std::abs(rhodes.tremoloDepth - 0.38f) < 0.001f);
 
-        // User slots #24 and #32
+        // User slots #37 and #45
         Synth::Preset user;
         assert(request(Synth::USER_PRESET_SLOT, user).isValid);
         assert(std::strcmp(user.name, "USER 01") == 0);
-        assert(request(32, user).isValid);
+        assert(request(45, user).isValid);
         assert(std::strcmp(user.name, "USER 09") == 0);
 
-        // Slot 33 (invalid slot beyond 32)
-        Synth::DecodedSysEx dumpInv = request(33, user);
+        // Slot 46 (invalid slot beyond 45)
+        Synth::DecodedSysEx dumpInv = request(46, user);
         assert(dumpInv.isValid);
         assert(dumpInv.type == Synth::SysExCommand::Handshake);
         assert(dumpInv.refCommand == Synth::SysExCommand::RequestDump);
         assert(dumpInv.handshakeStatus == Synth::HandshakeStatus::NackInvalidSlot);
 
-        std::cout << "  Passed (Factory 1..23 and user 24..32 dumps reply as PatchDumpV2 with voicing, engine and FM tremolo rate; slot 33 rejected)" << std::endl;
+        std::cout << "  Passed (Factory 1..36 and user 37..45 dumps reply as PatchDumpV2 with voicing, engine and FM tremolo rate; slot 46 rejected)" << std::endl;
     }
 
     // -------------------------------------------------------------
@@ -669,7 +682,7 @@ int main() {
         // Full round trip: every table parameter survives encode -> engine -> RequestDump-style encode
         Preset fm = getPresets()[static_cast<size_t>(SynthModel::FM_DrawbarOrgan)];
         uint8_t buf[MAX_SYSEX_MESSAGE_SIZE];
-        size_t n = SysExProtocol::encodePatchDumpV2(26, fm, buf, sizeof(buf));
+        size_t n = SysExProtocol::encodePatchDumpV2(39, fm, buf, sizeof(buf));
         size_t paramCount = 0;
         SysExProtocol::patchParams(paramCount);
         assert(n == PATCH_V2_FRAMING_SIZE + 1 + std::strlen(fm.name) + 3 * paramCount);
@@ -677,7 +690,7 @@ int main() {
         DecodedSysEx ack = lastHandshake(engine);
         assert(ack.type == SysExCommand::Handshake && ack.refCommand == SysExCommand::PatchDumpV2);
         assert(ack.handshakeStatus == HandshakeStatus::AckSuccess);
-        const Preset& u18 = engine.getUserPreset(26);
+        const Preset& u18 = engine.getUserPreset(39);
         assert(u18.engineMode == EngineMode::FM);
         assert(u18.voicing == SynthModel::FM_DrawbarOrgan);
         assert(std::abs(u18.tremoloRateHz - 6.2f) < 0.01f);
@@ -689,7 +702,7 @@ int main() {
 
         // Unknown IDs (incl. an extended 0x7F entry) and global IDs are skipped; missing IDs take the
         // user-slot defaults; a duplicate ID resolves to the last one
-        auto dump = buildDump(25, "SPARSE", {
+        auto dump = buildDump(38, "SPARSE", {
             entry(ParamId::DetuneCents, v14(ParamId::DetuneCents, 10.0f)),
             {0x7E, 0x12, 0x34},                         // unknown ID
             {PARAM_ID_EXTENDED, 0x01, 0x02, 0x7F, 0x7F}, // unknown extended ID
@@ -700,7 +713,7 @@ int main() {
         const float volBefore = engine.getMasterVolume();
         engine.handleSysEx(dump.data(), dump.size());
         assert(lastHandshake(engine).handshakeStatus == HandshakeStatus::AckSuccess);
-        const Preset& u17 = engine.getUserPreset(25);
+        const Preset& u17 = engine.getUserPreset(38);
         const Preset& def = getPresets()[FACTORY_PRESET_COUNT + 1];
         assert(std::strcmp(u17.name, "SPARSE") == 0);
         assert(std::abs(u17.detuneCents - 33.0f) < 0.01f);
@@ -714,22 +727,22 @@ int main() {
         engine.handleSysEx(dump.data(), dump.size());
         assert(lastHandshake(engine).handshakeStatus == HandshakeStatus::NackInvalidSlot);
 
-        dump = buildDump(25, "BAD", {entry(ParamId::Waveform, 1)});
+        dump = buildDump(38, "BAD", {entry(ParamId::Waveform, 1)});
         dump.insert(dump.end() - 2, 0x01);                                   // dangling partial entry
         dump[dump.size() - 2] = SysExProtocol::computeChecksum(&dump[4], dump.size() - 6);
         engine.handleSysEx(dump.data(), dump.size());
         DecodedSysEx nack = lastHandshake(engine);
         assert(nack.refCommand == SysExCommand::PatchDumpV2 && nack.handshakeStatus == HandshakeStatus::NackCorrupted);
 
-        dump = buildDump(25, "TWELVECHARSS", {});                            // name longer than 11
+        dump = buildDump(38, "TWELVECHARSS", {});                            // name longer than 11
         engine.handleSysEx(dump.data(), dump.size());
         assert(lastHandshake(engine).handshakeStatus == HandshakeStatus::NackCorrupted);
 
-        dump = buildDump(25, "CSUM", {entry(ParamId::Waveform, 1)});
+        dump = buildDump(38, "CSUM", {entry(ParamId::Waveform, 1)});
         dump[dump.size() - 2] ^= 0x01;
         engine.handleSysEx(dump.data(), dump.size());
         assert(lastHandshake(engine).handshakeStatus == HandshakeStatus::NackChecksumErr);
-        assert(std::strcmp(engine.getUserPreset(25).name, "SPARSE") == 0);
+        assert(std::strcmp(engine.getUserPreset(38).name, "SPARSE") == 0);
 
         // Live edit buffer (slot 0) applies without touching any user slot
         dump = buildDump(0, "LIVE", {entry(ParamId::DetuneCents, v14(ParamId::DetuneCents, 42.0f))});
@@ -748,9 +761,9 @@ int main() {
         SysExProtocol::encodeFastParamUpdate(ParamId::LegatoEnabled, 0, 0, fp, sizeof(fp));
         engine.handleSysEx(fp, sizeof(fp));
         assert(!engine.isLegatoEnabled());
-        SysExProtocol::encodeFastParamUpdate(ParamId::ModRatio, v14(ParamId::ModRatio, 3.0f), 28, fp, sizeof(fp));
+        SysExProtocol::encodeFastParamUpdate(ParamId::ModRatio, v14(ParamId::ModRatio, 3.0f), 41, fp, sizeof(fp));
         engine.handleSysEx(fp, sizeof(fp));
-        assert(std::abs(engine.getUserPreset(28).modRatio - 3.0f) < 0.01f);
+        assert(std::abs(engine.getUserPreset(41).modRatio - 3.0f) < 0.01f);
         // EngineMode / Voicing live: a generic patch takes the DX voicing in FM and gets its generic
         // voicing back in Subtractive; neither change touches other live state
         assert(engine.getEngineMode() == EngineMode::Subtractive && engine.getVoicingModel() == SynthModel::Count);
@@ -797,7 +810,7 @@ int main() {
 
         // Global IDs targeting an inactive user slot are ignored, as before
         const float vol = engine.getMasterVolume();
-        SysExProtocol::encodeFastParamUpdate(ParamId::MasterVolume, 0, 25, fp, sizeof(fp));
+        SysExProtocol::encodeFastParamUpdate(ParamId::MasterVolume, 0, 38, fp, sizeof(fp));
         engine.handleSysEx(fp, sizeof(fp));
         assert(engine.getMasterVolume() == vol);
         // Existing IDs keep their scaling (full-scale cutoff is 20 kHz)
@@ -815,43 +828,43 @@ int main() {
         SynthEngine migrated;
         migrated.setStorageCallbacks(
             [&](uint8_t slot, const uint8_t* data, size_t size) {
-                if (slot == 27) v2Store.assign(data, data + size);
+                if (slot == 40) v2Store.assign(data, data + size);
                 return true;
             },
             [&](uint8_t slot, uint8_t* out, size_t maxSize) -> size_t {
-                if (slot != 27 || v2Store.empty() || v2Store.size() > maxSize) return 0;
+                if (slot != 40 || v2Store.empty() || v2Store.size() > maxSize) return 0;
                 std::memcpy(out, v2Store.data(), v2Store.size());
                 return v2Store.size();
             },
             [&](uint8_t slot, uint8_t* out, size_t size) {
-                if (slot != 27 || size != sizeof(raw)) return false;
+                if (slot != 40 || size != sizeof(raw)) return false;
                 std::memcpy(out, &raw, sizeof(raw));
                 v1Read = true;
                 return true;
             });
         migrated.init(44100.0f);
         assert(v1Read && v2Store.empty()); // nothing rewritten at boot
-        assert(std::strcmp(migrated.getUserPreset(27).name, "OLD MOOG") == 0);
-        assert(migrated.getUserPreset(27).voicing == SynthModel::Minimoog);
-        assert(migrated.saveUserPresetToStorage(27) && !v2Store.empty());
+        assert(std::strcmp(migrated.getUserPreset(40).name, "OLD MOOG") == 0);
+        assert(migrated.getUserPreset(40).voicing == SynthModel::Minimoog);
+        assert(migrated.saveUserPresetToStorage(40) && !v2Store.empty());
         v1Read = false;
         SynthEngine rebooted;
         rebooted.setStorageCallbacks(nullptr,
             [&](uint8_t slot, uint8_t* out, size_t maxSize) -> size_t {
-                if (slot != 27 || v2Store.size() > maxSize) return 0;
+                if (slot != 40 || v2Store.size() > maxSize) return 0;
                 std::memcpy(out, v2Store.data(), v2Store.size());
                 return v2Store.size();
             },
             [&](uint8_t slot, uint8_t* out, size_t size) {
-                if (slot != 27 || size != sizeof(raw)) return false;
+                if (slot != 40 || size != sizeof(raw)) return false;
                 std::memcpy(out, &raw, sizeof(raw)); // still present, but the v2 body wins
                 v1Read = true;
                 return true;
             });
         rebooted.init(44100.0f);
         assert(!v1Read);
-        assert(std::strcmp(rebooted.getUserPreset(27).name, "OLD MOOG") == 0);
-        assert(rebooted.getUserPreset(27).voicing == SynthModel::Minimoog);
+        assert(std::strcmp(rebooted.getUserPreset(40).name, "OLD MOOG") == 0);
+        assert(rebooted.getUserPreset(40).voicing == SynthModel::Minimoog);
 
         std::cout << "  Passed (v2 dumps ACK as 0x05, skip unknown/global IDs, default missing ones, reject malformed bodies; v1 NVS blobs migrate on next save)" << std::endl;
     }

@@ -49,6 +49,7 @@ void SynthEngine::init(float sampleRate) {
         voice.init(sampleRate_);
     }
     chorus_.init(sampleRate_);
+    solinaEnsemble_.init(sampleRate_);
 
     // Initialize all User Preset Slots (#24..#32) with default factory User Presets
     const auto& presets = getPresets();
@@ -70,6 +71,7 @@ void SynthEngine::setSampleRate(float sampleRate) {
     sampleRate_ = sampleRate;
     updateVoices([&](Voice& v) { v.setSampleRate(sampleRate_); });
     chorus_.setSampleRate(sampleRate_);
+    solinaEnsemble_.setSampleRate(sampleRate_);
     updateAllVoices();
 }
 
@@ -171,6 +173,10 @@ static const char* expandKnobLabel(const char* label) {
     return label; // Drive, Tone, Glide, Octave, Slide, Accent, Tremolo are already full words
 }
 
+inline bool isFmStyleEngine(EngineMode mode) {
+    return mode == EngineMode::FM || mode == EngineMode::StageEp || mode == EngineMode::Opx4;
+}
+
 bool SynthEngine::describeParameter(uint8_t ccNumber, uint8_t value, std::string& outLabel, std::string& outValue) {
     const auto& p    = getCurrentPreset();
     const auto& bank = shiftActive_ ? p.bankB : p.bankA;
@@ -187,7 +193,7 @@ bool SynthEngine::describeParameter(uint8_t ccNumber, uint8_t value, std::string
     char valBuf[32] = {0};
     switch (ccNumber) {
         case CC_FILTER_CUTOFF:
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 if (label.empty()) label = "MOD DEPTH";
                 std::snprintf(valBuf, sizeof(valBuf), "%.2f", static_cast<double>(modDepth_));
                 break;
@@ -196,7 +202,7 @@ bool SynthEngine::describeParameter(uint8_t ccNumber, uint8_t value, std::string
             std::snprintf(valBuf, sizeof(valBuf), "%d Hz", static_cast<int>(cutoffHz_));
             break;
         case CC_FILTER_RESONANCE:
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 if (label.empty()) label = "FM RATIO";
                 std::snprintf(valBuf, sizeof(valBuf), "%.2f : 1", static_cast<double>(modRatio_));
                 break;
@@ -231,7 +237,7 @@ bool SynthEngine::describeParameter(uint8_t ccNumber, uint8_t value, std::string
             std::snprintf(valBuf, sizeof(valBuf), "%d ms", static_cast<int>(ampReleaseMs_));
             break;
         case CC_FILTER_ENV_AMT: // mirrors controlChange(): FM Mod Decay / Casio Pulse Width (shifted) / Filter Env Amount
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 if (label.empty()) label = "MOD DECAY";
                 std::snprintf(valBuf, sizeof(valBuf), "%d ms", static_cast<int>(filterDecayMs_));
             } else if (isCasioModel(p.model) && shiftActive_) {
@@ -243,7 +249,7 @@ bool SynthEngine::describeParameter(uint8_t ccNumber, uint8_t value, std::string
             }
             break;
         case CC_FILTER_ENV_ATTACK: // FM Mod Sustain / Filter Attack
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 if (label.empty()) label = "MOD SUSTAIN";
                 std::snprintf(valBuf, sizeof(valBuf), "%d %%", static_cast<int>(filterSustainLevel_ * 100.0f));
             } else {
@@ -252,7 +258,7 @@ bool SynthEngine::describeParameter(uint8_t ccNumber, uint8_t value, std::string
             }
             break;
         case CC_FILTER_ENV_DECAY: // FM Mod Attack / Filter Decay
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 if (label.empty()) label = "MOD ATTACK";
                 std::snprintf(valBuf, sizeof(valBuf), "%d ms", static_cast<int>(filterAttackMs_));
             } else {
@@ -261,7 +267,7 @@ bool SynthEngine::describeParameter(uint8_t ccNumber, uint8_t value, std::string
             }
             break;
         case CC_FILTER_ENV_SUSTAIN: // FM Tremolo Depth / Casio Sub Osc (shifted) / Filter Sustain
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 if (label.empty()) label = "TREMOLO";
                 std::snprintf(valBuf, sizeof(valBuf), "%d %%", static_cast<int>(tremoloDepth_ * 100.0f));
             } else if (isCasioModel(p.model) && shiftActive_) {
@@ -273,7 +279,7 @@ bool SynthEngine::describeParameter(uint8_t ccNumber, uint8_t value, std::string
             }
             break;
         case CC_FILTER_ENV_RELEASE: // FM Tremolo Rate / Filter Release
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 if (label.empty()) label = "TREMOLO RATE";
                 std::snprintf(valBuf, sizeof(valBuf), "%.1f Hz", static_cast<double>(tremoloRateHz_));
             } else {
@@ -394,6 +400,11 @@ bool SynthEngine::describeParameter(uint8_t ccNumber, uint8_t value, std::string
             if (label.empty()) label = "TREMOLO RATE";
             std::snprintf(valBuf, sizeof(valBuf), "%.1f Hz", static_cast<double>(tremoloRateHz_));
             break;
+        case CC_OPX_ALGO: {
+            if (label.empty()) label = "ALGORITHM";
+            std::snprintf(valBuf, sizeof(valBuf), "ALGO %d", static_cast<int>(timbre_.opxAlgo + 1));
+            break;
+        }
         case CC_DRAWBAR_1:
         case CC_DRAWBAR_1 + 1:
         case CC_DRAWBAR_1 + 2:
@@ -553,7 +564,7 @@ static uint8_t linToCC(float v, float lo, float span) { return ParameterScaler::
 // Mirrors the scalings in controlChange()
 uint8_t SynthEngine::knobValueFor(uint8_t cc, bool shift, uint8_t current) const {
     using Scaler = ParameterScaler; // not PS: a register macro in the Xtensa headers
-    const bool fm    = engineMode_ == EngineMode::FM;
+    const bool fm    = isFmStyleEngine(engineMode_);
     const bool casio = isCasioModel(getCurrentPreset().model);
     switch (cc) {
         case CC_FILTER_CUTOFF:
@@ -638,6 +649,7 @@ uint8_t SynthEngine::knobValueFor(uint8_t cc, bool shift, uint8_t current) const
         case CC_KEY_CLICK:     return Scaler::normToCC(timbre_.keyClick);
         case CC_TREMOLO_DEPTH: return Scaler::normToCC(tremoloDepth_);
         case CC_TREMOLO_RATE:  return linToCC(tremoloRateHz_, 0.5f, 15.0f);
+        case CC_OPX_ALGO:      return static_cast<uint8_t>(std::clamp<int>(timbre_.opxAlgo * 16, 0, 127));
         default:
             if (cc >= CC_DRAWBAR_1 && cc <= CC_DRAWBAR_9) { // round(cc / 127 * 8)
                 const float bar = timbre_.drawbars[cc - CC_DRAWBAR_1];
@@ -989,7 +1001,7 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
 
         // Primary Controls (Bank A)
         case CC_FILTER_CUTOFF:
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 setModDepth(ParameterScaler::ccToNorm(value) * 12.0f);
             } else {
                 setCutoffHz(ParameterScaler::ccToCutoffHz(value));
@@ -997,7 +1009,7 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
             break;
 
         case CC_FILTER_RESONANCE:
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 setModRatio(0.5f + ParameterScaler::ccToNorm(value) * 13.5f);
             } else {
                 setResonanceQ(ParameterScaler::ccToResonanceQ(value));
@@ -1005,7 +1017,7 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
             break;
 
         case CC_OSC_WAVEFORM:
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 setModDepth(ParameterScaler::ccToNorm(value) * 12.0f);
             } else if (isCasioModel(getCurrentPreset().model)) {
                 if (value < 32) {
@@ -1045,7 +1057,7 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
             break;
 
         case CC_FILTER_ENV_AMT:
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 setFilterDecayMs(ParameterScaler::ccToEnvelopeTimeMs(value, 10.0f, 4000.0f));
             } else if (isCasioModel(getCurrentPreset().model) && shiftActive_) {
                 setPulseWidth(0.05f + ParameterScaler::ccToNorm(value) * 0.90f);
@@ -1055,7 +1067,7 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
             break;
 
         case CC_SUB_OSC_LEVEL: // Sub-oscillator level, or FM Feedback (CC 77)
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 setModFeedback(ParameterScaler::ccToNorm(value) * 1.5f);
             } else {
                 setSubOscLevel(ParameterScaler::ccToNorm(value));
@@ -1103,7 +1115,7 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
 
         // Secondary Controls (Bank B / Shift)
         case CC_FILTER_ENV_ATTACK: // Filter Attack, PolyMod, Distortion, or FM ModSust (CC 80)
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 setFilterSustainLevel(ParameterScaler::ccToNorm(value));
             } else {
                 setFilterAttackMs(ParameterScaler::ccToEnvelopeTimeMs(value, 1.0f, 4000.0f));
@@ -1111,7 +1123,7 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
             break;
 
         case CC_FILTER_ENV_DECAY: // Filter Decay, Resonance Peak, or FM ModAtt (CC 81)
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 setFilterAttackMs(ParameterScaler::ccToEnvelopeTimeMs(value, 1.0f, 2000.0f));
             } else {
                 setFilterDecayMs(ParameterScaler::ccToEnvelopeTimeMs(value, 5.0f, 5000.0f));
@@ -1119,7 +1131,7 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
             break;
 
         case CC_FILTER_ENV_SUSTAIN: // Filter Sustain, SubOsc, or FM Tremolo Depth (CC 82)
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 setTremoloDepth(ParameterScaler::ccToNorm(value));
             } else if (isCasioModel(getCurrentPreset().model) && shiftActive_) {
                 setSubOscLevel(ParameterScaler::ccToNorm(value));
@@ -1129,7 +1141,7 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
             break;
 
         case CC_FILTER_ENV_RELEASE: // Filter Release, SubBass, or FM Tremolo Rate (CC 83)
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 setTremoloRateHz(0.5f + ParameterScaler::ccToNorm(value) * 15.0f);
             } else {
                 setFilterReleaseMs(ParameterScaler::ccToEnvelopeTimeMs(value, 5.0f, 5000.0f));
@@ -1164,38 +1176,38 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
 
         // Direct FM Synthesis CCs (CC_FM_MOD_DEPTH..CC_FM_MASTER_VOL)
         case CC_FM_MOD_DEPTH:
-            if (engineMode_ == EngineMode::FM) setModDepth(ParameterScaler::ccToNorm(value) * 12.0f);
+            if (isFmStyleEngine(engineMode_)) setModDepth(ParameterScaler::ccToNorm(value) * 12.0f);
             break;
 
         case CC_FM_MOD_RATIO:
-            if (engineMode_ == EngineMode::FM) setModRatio(0.5f + ParameterScaler::ccToNorm(value) * 13.5f);
+            if (isFmStyleEngine(engineMode_)) setModRatio(0.5f + ParameterScaler::ccToNorm(value) * 13.5f);
             break;
 
         case CC_FM_FILTER_DECAY:
-            if (engineMode_ == EngineMode::FM) setFilterDecayMs(ParameterScaler::ccToEnvelopeTimeMs(value, 10.0f, 4000.0f));
+            if (isFmStyleEngine(engineMode_)) setFilterDecayMs(ParameterScaler::ccToEnvelopeTimeMs(value, 10.0f, 4000.0f));
             break;
 
         case CC_FM_AMP_RELEASE:
-            if (engineMode_ == EngineMode::FM) setAmpReleaseMs(ParameterScaler::ccToEnvelopeTimeMs(value, 5.0f, 5000.0f));
+            if (isFmStyleEngine(engineMode_)) setAmpReleaseMs(ParameterScaler::ccToEnvelopeTimeMs(value, 5.0f, 5000.0f));
             break;
 
         case CC_FM_FEEDBACK:
-            if (engineMode_ == EngineMode::FM) setModFeedback(ParameterScaler::ccToNorm(value) * 1.5f);
+            if (isFmStyleEngine(engineMode_)) setModFeedback(ParameterScaler::ccToNorm(value) * 1.5f);
             break;
 
         case CC_FM_CHORUS_MIX:
-            if (engineMode_ == EngineMode::FM) {
+            if (isFmStyleEngine(engineMode_)) {
                 chorus_.setEnabled(value > 10);
                 chorus_.setMix(ParameterScaler::ccToNorm(value));
             }
             break;
 
         case CC_FM_TREMOLO_DEPTH:
-            if (engineMode_ == EngineMode::FM) setTremoloDepth(ParameterScaler::ccToNorm(value));
+            if (isFmStyleEngine(engineMode_)) setTremoloDepth(ParameterScaler::ccToNorm(value));
             break;
 
         case CC_FM_MASTER_VOL:
-            if (engineMode_ == EngineMode::FM) setMasterVolume(ParameterScaler::ccToNorm(value));
+            if (isFmStyleEngine(engineMode_)) setMasterVolume(ParameterScaler::ccToNorm(value));
             break;
 
         // Wavetable / phase distortion / pluck / additive engines
@@ -1214,6 +1226,16 @@ void SynthEngine::controlChange(uint8_t ccNumber, uint8_t value) {
         case CC_KEY_CLICK:     setKeyClick(ParameterScaler::ccToNorm(value)); break;
         case CC_TREMOLO_DEPTH: setTremoloDepth(ParameterScaler::ccToNorm(value)); break;
         case CC_TREMOLO_RATE:  setTremoloRateHz(0.5f + ParameterScaler::ccToNorm(value) * 15.0f); break;
+        case CC_OPX_ALGO: {
+            uint8_t algo = std::min<uint8_t>(7, value / 16);
+            timbre_.opxAlgo = algo;
+            updateVoices([&](Voice& v) {
+                TimbreParams t = v.getTimbre();
+                t.opxAlgo = algo;
+                v.setTimbre(t);
+            });
+            break;
+        }
         case CC_DRAWBAR_1:
         case CC_DRAWBAR_1 + 1:
         case CC_DRAWBAR_1 + 2:
@@ -1450,6 +1472,7 @@ void SynthEngine::applyParametersToVoice(Voice& voice) {
     voice.setAccentAmount(accentAmount_);
     voice.setOscKeySync(voicing_.oscKeySync);
     voice.setAnalogDrift(voicing_.analogDrift);
+    voice.setSubModMode(voicing_.subMod);
     voice.setModRatio(modRatio_);
     voice.setModDepth(modDepth_);
     voice.setModFeedback(modFeedback_);
@@ -1503,12 +1526,19 @@ void SynthEngine::setTremoloRateHz(float rateHz) {
 
 const char* SynthEngine::getEngineModeName(EngineMode mode) {
     switch (mode) {
-        case EngineMode::FM:        return "FM";
-        case EngineMode::Wavetable: return "WAVETABLE";
-        case EngineMode::PhaseDist: return "PHASE DIST";
-        case EngineMode::Pluck:     return "PLUCK";
-        case EngineMode::Additive:  return "ADDITIVE";
-        default:                    return "SUBTRACTIVE";
+        case EngineMode::FM:            return "FM";
+        case EngineMode::Wavetable:     return "WAVETABLE";
+        case EngineMode::PhaseDist:     return "PHASE DIST";
+        case EngineMode::Pluck:         return "PLUCK";
+        case EngineMode::Additive:      return "ADDITIVE";
+        case EngineMode::Opx4:          return "OPX-4";
+        case EngineMode::StagePiano:    return "STAGE PIANO";
+        case EngineMode::StageEp:       return "STAGE EP";
+        case EngineMode::StudioStrings: return "STUDIO STR";
+        case EngineMode::FabricXl:      return "FABRIC XL";
+        case EngineMode::Mariana:       return "MARIANA";
+        case EngineMode::Hype:          return "HYPE";
+        default:                        return "SUBTRACTIVE";
     }
 }
 
@@ -2112,8 +2142,17 @@ void SynthEngine::renderInternal(float* outL, float* outR, size_t numFrames) {
         }
     }
 
-    // Process through stereo chorus (e.g. Juno-60 lush stereo chorus)
-    chorus_.processBlock(outL, outR, numFrames);
+    // Process through stereo chorus (e.g. Juno-60 lush stereo chorus) or Solina Ensemble
+    if (patchVoicing_ == SynthModel::Solina && chorus_.isEnabled()) {
+        solinaEnsemble_.setMix(chorus_.getMix());
+        solinaEnsemble_.processBlock(outL, outR, numFrames);
+    } else {
+        chorus_.processBlock(outL, outR, numFrames);
+    }
+
+    if (engineMode_ == EngineMode::Hype && tremoloDepth_ > 0.01f) {
+        apply_hype_pump(outL, outR, static_cast<int>(numFrames), tremoloDepth_, &hypePumpPhase_, tremoloRateHz_ / sampleRate_);
+    }
 
     // Mix dedicated DSP Metronome Click (dry, zero voice stealing)
     const uint32_t samplesPerBeat = metroSamplesPerBeat();
@@ -2362,6 +2401,16 @@ void SynthEngine::applyLiveParam(ParamId id, float v) {
         case ParamId::PercLevel:         setPercussionLevel(v); break;
         case ParamId::PercHarmonic:      setPercussionHarmonic(static_cast<uint8_t>(v)); break;
         case ParamId::KeyClick:          setKeyClick(v); break;
+        case ParamId::OpxAlgo: {
+            uint8_t algo = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(v)), 0, 7));
+            timbre_.opxAlgo = algo;
+            updateVoices([&](Voice& voice) {
+                TimbreParams t = voice.getTimbre();
+                t.opxAlgo = algo;
+                voice.setTimbre(t);
+            });
+            break;
+        }
         case ParamId::Voicing: {
             const uint8_t idx = static_cast<uint8_t>(v);
             setEngineModeAndVoicing(engineMode_, idx == 0 ? SynthModel::Count : static_cast<SynthModel>(idx - 1));
